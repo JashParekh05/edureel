@@ -15,7 +15,7 @@ Educational short-form video reels, generated on-demand from your learning goals
 
 | Layer | Tech |
 |---|---|
-| LLM | Claude (claude-sonnet-4-6) |
+| LLM | Groq (llama-3.3-70b-versatile) |
 | Scraping | Firecrawl + Scrapy |
 | Video download | yt-dlp |
 | Transcription | OpenAI Whisper |
@@ -63,7 +63,7 @@ scrapy crawl mit_ocw
 
 ## Keys you need
 
-- `ANTHROPIC_API_KEY` — [console.anthropic.com](https://console.anthropic.com)
+- `GROQ_API_KEY` — [console.groq.com](https://console.groq.com) (free)
 - `FIRECRAWL_API_KEY` — [firecrawl.dev](https://firecrawl.dev) (or self-host)
 - `SUPABASE_URL` + `SUPABASE_KEY` — [supabase.com](https://supabase.com)
 - `R2_*` — Cloudflare R2 bucket ([cloudflare.com](https://cloudflare.com))

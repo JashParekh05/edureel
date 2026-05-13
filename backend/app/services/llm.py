@@ -1,16 +1,18 @@
 import os
 import json
 import uuid
-import anthropic
+from groq import Groq
 from app.models.schemas import Topic, LearningPath
 
-_client: anthropic.Anthropic | None = None
+_client: Groq | None = None
+
+MODEL = "llama-3.3-70b-versatile"
 
 
-def get_client() -> anthropic.Anthropic:
+def get_client() -> Groq:
     global _client
     if _client is None:
-        _client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        _client = Groq(api_key=os.environ["GROQ_API_KEY"])
     return _client
 
 
@@ -44,19 +46,19 @@ def parse_learning_path(query: str, session_id: str | None = None) -> LearningPa
     client = get_client()
     sid = session_id or str(uuid.uuid4())
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
+    response = client.chat.completions.create(
+        model=MODEL,
         max_tokens=1024,
-        system=SYSTEM_PROMPT,
         messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": f"User wants to learn: {query}\n\nReturn JSON matching this schema:\n{TOPIC_SCHEMA}",
-            }
+            },
         ],
     )
 
-    raw = response.content[0].text
+    raw = response.choices[0].message.content
     # Strip markdown code fences if present
     if "```" in raw:
         raw = raw.split("```")[1]

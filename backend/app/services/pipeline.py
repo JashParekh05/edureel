@@ -7,11 +7,13 @@ from pathlib import Path
 import yt_dlp
 import whisper
 import ffmpeg
-import anthropic
+from groq import Groq
 from app.services.storage import upload_clip
 
 _whisper_model = None
-_anthropic_client = None
+_groq_client = None
+
+MODEL = "llama-3.3-70b-versatile"
 
 
 def get_whisper():
@@ -21,11 +23,11 @@ def get_whisper():
     return _whisper_model
 
 
-def get_anthropic():
-    global _anthropic_client
-    if _anthropic_client is None:
-        _anthropic_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    return _anthropic_client
+def get_groq():
+    global _groq_client
+    if _groq_client is None:
+        _groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    return _groq_client
 
 
 def process_video(video_url: str, topic_slug: str) -> list[dict]:
@@ -88,9 +90,9 @@ def _identify_segments(transcript: dict, topic_slug: str) -> list[dict]:
         for s in transcript["segments"]
     ]
 
-    client = get_anthropic()
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
+    client = get_groq()
+    response = client.chat.completions.create(
+        model=MODEL,
         max_tokens=2048,
         messages=[
             {
@@ -116,7 +118,7 @@ Only return the JSON array, no other text.""",
         ],
     )
 
-    raw = response.content[0].text.strip()
+    raw = response.choices[0].message.content.strip()
     if "```" in raw:
         raw = raw.split("```")[1]
         if raw.startswith("json"):
