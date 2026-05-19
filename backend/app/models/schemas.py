@@ -32,6 +32,7 @@ class Clip(BaseModel):
     source_platform: str | None
     hook_score: float = 0.5
     created_at: str | None = None
+    embedding: list[float] | None = None
 
 
 class InterestsPayload(BaseModel):

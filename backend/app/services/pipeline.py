@@ -4,6 +4,7 @@ import json
 import logging
 import yt_dlp
 from groq import Groq
+from app.services.embeddings import embed_texts
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -37,9 +38,13 @@ def process_video(video_url: str, topic_slug: str) -> list[dict]:
     segments = _identify_segments(transcript, topic_slug)
     logger.info(f"Groq returned {len(segments)} segments")
 
+    # Batch embed all segment transcripts
+    texts = [seg.get("transcript") or seg.get("title", "") for seg in segments]
+    embeddings = embed_texts(texts)
+
     clips = []
-    for seg in segments:
-        clips.append({
+    for seg, emb in zip(segments, embeddings):
+        clip: dict = {
             "topic_slug": topic_slug,
             "title": seg["title"],
             "description": seg["description"],
@@ -50,7 +55,10 @@ def process_video(video_url: str, topic_slug: str) -> list[dict]:
             "source_url": video_url,
             "source_platform": "youtube",
             "hook_score": seg.get("hook_score", 0.5),
-        })
+        }
+        if emb is not None:
+            clip["embedding"] = emb
+        clips.append(clip)
     return clips
 
 

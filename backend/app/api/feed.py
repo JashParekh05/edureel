@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Query
 from app.models.schemas import Clip, ClipEvent, FeedResponse, TopicRecommendation
 from app.db.supabase import get_client
+from app.services.embeddings import embed_text, cosine_similarity, ema_update
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/feed", tags=["feed"])
@@ -42,32 +43,47 @@ def _get_session_telemetry(db, session_id: str) -> tuple[set[str], dict[str, flo
     return seen_ids, topic_completion
 
 
-def _update_interest_vector(db, session_id: str, topic_slug: str, completed: bool, replay_count: int, feedback: str | None = None) -> None:
-    """Real-time interest vector update after a clip event (Monolith-inspired)."""
+def _update_interest_vector(db, session_id: str, topic_slug: str, completed: bool, replay_count: int, feedback: str | None = None, clip_embedding: list[float] | None = None) -> None:
+    """Real-time interest vector + taste vector update after a clip event."""
     existing = (
         db.table("session_embeddings")
-        .select("interest_vector")
+        .select("interest_vector, taste_vector")
         .eq("session_id", session_id)
         .limit(1)
         .execute()
     )
-    vector = existing.data[0]["interest_vector"] if existing.data else {}
+    row = existing.data[0] if existing.data else {}
+    vector: dict = row.get("interest_vector") or {}
+    taste: list[float] | None = row.get("taste_vector")
 
     if feedback == "want_more":
         delta = 0.6
     elif feedback == "already_know":
-        delta = -1.0  # pin to minimum
+        delta = -1.0
     else:
         delta = (0.15 if completed else -0.05) + replay_count * 0.3
 
     current = float(vector.get(topic_slug, 0.0))
     vector[topic_slug] = round(max(-1.0, min(1.0, current + delta)), 3)
 
-    db.table("session_embeddings").upsert({
+    # Update taste vector via EMA when we have a clip embedding and the event is positive
+    update_taste = clip_embedding and delta > 0
+    new_taste = taste
+    if update_taste:
+        if taste and len(taste) == len(clip_embedding):
+            new_taste = ema_update(taste, clip_embedding, alpha=0.2)
+        else:
+            new_taste = clip_embedding
+
+    upsert_data: dict = {
         "session_id": session_id,
         "interest_vector": vector,
         "updated_at": "now()",
-    }).execute()
+    }
+    if new_taste is not None:
+        upsert_data["taste_vector"] = new_taste
+
+    db.table("session_embeddings").upsert(upsert_data).execute()
 
 
 # ---------------------------------------------------------------------------
@@ -95,13 +111,15 @@ def _compute_scores(
     pop_stats: dict[str, float],
     user_avg_watch_seconds: float | None,
     interest_vector: dict[str, float] | None = None,
+    taste_vector: list[float] | None = None,
 ) -> list[Clip]:
     """
-    final_score = 0.30 * hook_score
-                + 0.25 * population_completion_rate
-                + 0.20 * duration_affinity
-                + 0.15 * recency_bonus
-                + 0.10 * interest_affinity   (0 when no vector)
+    final_score = 0.28 * hook_score
+                + 0.23 * population_completion_rate
+                + 0.18 * duration_affinity
+                + 0.13 * recency_bonus
+                + 0.10 * interest_affinity
+                + 0.08 * semantic_affinity   (0 when no taste_vector or no clip embedding)
     """
     now = datetime.now(timezone.utc)
     for clip in clips:
@@ -125,8 +143,17 @@ def _compute_scores(
         raw_affinity = float((interest_vector or {}).get(clip.topic_slug, 0.0))
         affinity = (raw_affinity + 1.0) / 2.0
 
+        # Semantic affinity: cosine similarity between taste vector and clip embedding
+        semantic = 0.5  # neutral default
+        if taste_vector and getattr(clip, "embedding", None):
+            try:
+                raw_sim = cosine_similarity(taste_vector, clip.embedding)
+                semantic = (raw_sim + 1.0) / 2.0  # [-1,1] → [0,1]
+            except Exception:
+                pass
+
         clip.hook_score = round(
-            0.30 * hook + 0.25 * pop + 0.20 * dur_affinity + 0.15 * recency + 0.10 * affinity,
+            0.28 * hook + 0.23 * pop + 0.18 * dur_affinity + 0.13 * recency + 0.10 * affinity + 0.08 * semantic,
             4,
         )
     return clips
@@ -204,6 +231,7 @@ def _fetch_clips_for_slug(
     limit: int = 20,
     user_avg_watch_seconds: float | None = None,
     interest_vector: dict[str, float] | None = None,
+    taste_vector: list[float] | None = None,
 ) -> list[Clip]:
     result = (
         db.table("clips")
@@ -222,7 +250,7 @@ def _fetch_clips_for_slug(
 
     clip_ids = [c.id for c in clips]
     pop_stats = _get_clip_population_stats(db, clip_ids)
-    clips = _compute_scores(clips, pop_stats, user_avg_watch_seconds, interest_vector)
+    clips = _compute_scores(clips, pop_stats, user_avg_watch_seconds, interest_vector, taste_vector)
     return sorted(clips, key=lambda c: c.hook_score, reverse=True)
 
 
@@ -260,15 +288,17 @@ async def get_path_feed(session_id: str):
         if watch_rows.data else None
     )
 
-    # Live interest vector for personalized re-ranking
+    # Live interest vector + taste vector for personalized re-ranking
     iv_res = (
         db.table("session_embeddings")
-        .select("interest_vector")
+        .select("interest_vector, taste_vector")
         .eq("session_id", session_id)
         .limit(1)
         .execute()
     )
-    interest_vector: dict[str, float] = iv_res.data[0]["interest_vector"] if iv_res.data else {}
+    iv_row = iv_res.data[0] if iv_res.data else {}
+    interest_vector: dict[str, float] = iv_row.get("interest_vector") or {}
+    taste_vector: list[float] | None = iv_row.get("taste_vector")
 
     feeds = []
     for slug in path.data[0]["topic_slugs"]:
@@ -281,6 +311,7 @@ async def get_path_feed(session_id: str):
             seen_ids=seen_ids,
             user_avg_watch_seconds=user_avg_watch_seconds,
             interest_vector=interest_vector,
+            taste_vector=taste_vector,
         )
         completion_rate = topic_completion.get(slug, 0.0)
 
@@ -346,8 +377,30 @@ async def get_feed(
     return FeedResponse(topic_slug=topic_slug, clips=clips, processing=len(clips) == 0)
 
 
-def _match_interest_slugs(interests: list[str], all_slugs: list[str]) -> list[str]:
-    """Return topic slugs that overlap with any user interest keyword."""
+def _match_interest_slugs(interests: list[str], all_slugs: list[str], taste_vector: list[float] | None = None) -> list[str]:
+    """Return topic slugs relevant to the user's interests.
+
+    Uses semantic similarity when taste_vector is available, otherwise falls
+    back to keyword overlap.
+    """
+    if not interests and taste_vector is None:
+        return all_slugs[:10]
+
+    # Semantic path: embed each slug and rank by cosine similarity to taste
+    if taste_vector is not None:
+        from app.services.embeddings import embed_texts, cosine_similarity
+        slug_texts = [s.replace("-", " ") for s in all_slugs]
+        slug_embeddings = embed_texts(slug_texts)
+        scored = []
+        for slug, emb in zip(all_slugs, slug_embeddings):
+            if emb is not None:
+                scored.append((slug, cosine_similarity(taste_vector, emb)))
+            else:
+                scored.append((slug, 0.0))
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return [s for s, _ in scored[:10]]
+
+    # Fallback: keyword overlap
     if not interests:
         return all_slugs[:10]
     keywords = set()
@@ -403,13 +456,19 @@ async def get_discover_feed(user_id: str, limit: int = Query(20, le=50)):
 
     paths = db.table("learning_paths").select("session_id").eq("user_id", user_id).execute()
     seen_ids: set[str] = set()
+    taste_vector: list[float] | None = None
     for p in paths.data:
         events = db.table("clip_events").select("clip_id").eq("session_id", p["session_id"]).execute()
         seen_ids.update(e["clip_id"] for e in events.data)
+        # Use taste_vector from the most recent session that has one
+        if taste_vector is None:
+            iv = db.table("session_embeddings").select("taste_vector").eq("session_id", p["session_id"]).limit(1).execute()
+            if iv.data and iv.data[0].get("taste_vector"):
+                taste_vector = iv.data[0]["taste_vector"]
 
     all_topics = db.table("topics").select("slug").execute()
     all_slugs = [t["slug"] for t in all_topics.data]
-    relevant_slugs = _match_interest_slugs(interests, all_slugs)
+    relevant_slugs = _match_interest_slugs(interests, all_slugs, taste_vector=taste_vector)
 
     return _fetch_discover_clips(db, relevant_slugs, all_slugs, seen_ids, limit)
 
@@ -430,9 +489,10 @@ async def record_clip_event(clip_id: str, event: ClipEvent):
         return
 
     if event.session_id:
-        clip = db.table("clips").select("topic_slug").eq("id", clip_id).limit(1).execute()
+        clip = db.table("clips").select("topic_slug, embedding").eq("id", clip_id).limit(1).execute()
         if clip.data:
             _update_interest_vector(
                 db, event.session_id, clip.data[0]["topic_slug"],
                 event.completed, event.replay_count, event.feedback,
+                clip_embedding=clip.data[0].get("embedding"),
             )

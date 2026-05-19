@@ -44,15 +44,13 @@ function FeedContent() {
           f.clips.forEach((c) => { labels[c.id] = f.topic_slug; });
         });
         allClips.forEach((c) => seenClipIdsRef.current.add(c.id));
+        if (startTopicSlug) {
+          const idx = allClips.findIndex((c) => labels[c.id] === startTopicSlug);
+          if (idx >= 0) resolvedStartRef.current = idx;
+        }
         setClips(allClips);
         setTopicLabels(labels);
         setProcessing(feeds.some((f) => f.processing));
-        if (startTopicSlug) {
-          const idx = allClips.findIndex((c) => labels[c.id] === startTopicSlug);
-          if (idx > 0) {
-            resolvedStartRef.current = idx;
-          }
-        }
       } else if (topicSlug) {
         const feed = await getTopicFeed(topicSlug);
         setClips(feed.clips);
@@ -90,15 +88,29 @@ function FeedContent() {
   const initialScrollDoneRef = useRef(false);
   const resolvedStartRef = useRef<number>(startIndex);
 
+  // Restore progress from localStorage (only when no explicit start param)
+  useEffect(() => {
+    if (!sessionId || startTopicSlug || startIndex > 0) return;
+    const saved = localStorage.getItem(`learnreel_progress_${sessionId}`);
+    if (saved) resolvedStartRef.current = parseInt(saved, 10) || 0;
+  }, [sessionId, startTopicSlug, startIndex]);
+
   useEffect(() => {
     loadFeed();
     clipStartRef.current = Date.now();
   }, [loadFeed]);
 
+  // Persist progress when activeIndex advances
+  useEffect(() => {
+    if (!sessionId || activeIndex === 0) return;
+    localStorage.setItem(`learnreel_progress_${sessionId}`, String(activeIndex));
+  }, [activeIndex, sessionId]);
+
   // Scroll to resolved start index once clips are available
   useEffect(() => {
+    if (initialScrollDoneRef.current || clips.length === 0) return;
     const target = resolvedStartRef.current;
-    if (initialScrollDoneRef.current || clips.length === 0 || target === 0) return;
+    if (target === 0) { initialScrollDoneRef.current = true; return; }
     if (clips.length > target) {
       initialScrollDoneRef.current = true;
       const el = containerRef.current?.querySelectorAll("[data-index]")[target] as HTMLElement;
