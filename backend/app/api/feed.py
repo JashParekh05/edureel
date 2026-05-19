@@ -116,6 +116,7 @@ def _update_interest_vector(db, session_id: str, topic_slug: str, completed: boo
 
             u_current = float(u_interest.get(topic_slug, 0.0))
             u_interest[topic_slug] = round(max(-1.0, min(1.0, u_current + delta * 0.5)), 3)
+            u_interest = {k: v for k, v in u_interest.items() if abs(v) >= 0.05}
 
             user_upsert: dict = {"user_id": user_id, "interest_vector": u_interest}
             if new_taste is not None:
@@ -195,7 +196,7 @@ def _compute_scores(
             except Exception:
                 pass
 
-        clip.hook_score = round(
+        clip.final_score = round(
             0.28 * hook + 0.23 * pop + 0.18 * dur_affinity + 0.13 * recency + 0.10 * affinity + 0.08 * semantic,
             4,
         )
@@ -221,7 +222,7 @@ def _transcript_boost(clips: list[Clip], user_query: str) -> list[Clip]:
             continue
         transcript_lower = clip.transcript.lower()
         matches = sum(1 for kw in keywords if kw in transcript_lower)
-        clip.hook_score = round(min(1.0, clip.hook_score + 0.15 * matches / len(keywords)), 4)
+        clip.final_score = round(min(1.0, (clip.final_score or clip.hook_score) + 0.15 * matches / len(keywords)), 4)
     return clips
 
 
@@ -294,7 +295,7 @@ def _fetch_clips_for_slug(
     clip_ids = [c.id for c in clips]
     pop_stats = _get_clip_population_stats(db, clip_ids)
     clips = _compute_scores(clips, pop_stats, user_avg_watch_seconds, interest_vector, taste_vector)
-    return sorted(clips, key=lambda c: c.hook_score, reverse=True)
+    return sorted(clips, key=lambda c: c.final_score or c.hook_score, reverse=True)
 
 
 # ---------------------------------------------------------------------------
@@ -439,7 +440,7 @@ async def get_feed(
     clip_ids = [c.id for c in clips]
     pop_stats = _get_clip_population_stats(db, clip_ids)
     clips = _compute_scores(clips, pop_stats, None)
-    clips = sorted(clips, key=lambda c: c.hook_score, reverse=True)
+    clips = sorted(clips, key=lambda c: c.final_score or c.hook_score, reverse=True)
     return FeedResponse(topic_slug=topic_slug, clips=clips, processing=len(clips) == 0)
 
 

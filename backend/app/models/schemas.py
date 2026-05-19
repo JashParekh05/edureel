@@ -15,7 +15,7 @@ class LearningPath(BaseModel):
     session_id: str
     user_query: str
     topics: list[Topic]
-    summary: str
+    summary: str = ""
     familiarity_prompt: str | None = None
     suggested_start_index: int = 0
 
@@ -32,6 +32,7 @@ class Clip(BaseModel):
     source_url: str | None
     source_platform: str | None
     hook_score: float = 0.5
+    final_score: float | None = None
     created_at: str | None = None
     embedding: list[float] | None = None
 
