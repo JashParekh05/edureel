@@ -37,13 +37,18 @@ export interface FeedResponse {
   processing: boolean;
 }
 
+function authHeaders(token: string): Record<string, string> {
+  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+}
+
 export async function createLearningPath(
   query: string,
-  userId?: string
+  userId: string,
+  token: string,
 ): Promise<LearningPath> {
   const res = await fetch(`${API_BASE}/api/topics/`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(token),
     body: JSON.stringify({ query, user_id: userId }),
   });
   if (!res.ok) throw new Error("Failed to create learning path");
@@ -58,8 +63,10 @@ export interface LearningPathSummary {
   created_at: string;
 }
 
-export async function getUserHistory(userId: string): Promise<LearningPathSummary[]> {
-  const res = await fetch(`${API_BASE}/api/topics/history/${encodeURIComponent(userId)}`);
+export async function getUserHistory(userId: string, token: string): Promise<LearningPathSummary[]> {
+  const res = await fetch(`${API_BASE}/api/topics/history/${encodeURIComponent(userId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!res.ok) return [];
   return res.json();
 }
@@ -102,23 +109,27 @@ export interface UserProfile {
   onboarding_complete: boolean;
 }
 
-export async function getUserProfile(userId: string): Promise<UserProfile> {
-  const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`);
+export async function getUserProfile(userId: string, token: string): Promise<UserProfile> {
+  const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!res.ok) return { user_id: userId, interests: [], onboarding_complete: false };
   return res.json();
 }
 
-export async function setUserInterests(userId: string, interests: string[]): Promise<void> {
+export async function setUserInterests(userId: string, interests: string[], token: string): Promise<void> {
   const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/interests`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(token),
     body: JSON.stringify({ interests }),
   });
   if (!res.ok) throw new Error(`Failed to save interests: ${res.status}`);
 }
 
-export async function getDiscoverFeed(userId: string): Promise<Clip[]> {
-  const res = await fetch(`${API_BASE}/api/feed/discover/${encodeURIComponent(userId)}`);
+export async function getDiscoverFeed(userId: string, token: string): Promise<Clip[]> {
+  const res = await fetch(`${API_BASE}/api/feed/discover/${encodeURIComponent(userId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!res.ok) return [];
   return res.json();
 }

@@ -22,7 +22,7 @@ const INTEREST_TAGS = [
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
 
@@ -35,10 +35,10 @@ export default function OnboardingPage() {
   }
 
   async function handleContinue() {
-    if (!user || selected.size < 3) return;
+    if (!user || !session || selected.size < 3) return;
     setSaving(true);
     try {
-      await setUserInterests(user.id, Array.from(selected));
+      await setUserInterests(user.id, Array.from(selected), session.access_token);
     } catch {
       // best-effort — still proceed to home
     }

@@ -1,14 +1,17 @@
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from app.models.schemas import InterestsPayload
 from app.db.supabase import get_client
+from app.auth import require_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 
 @router.get("/{user_id}/profile")
-async def get_profile(user_id: str):
+async def get_profile(user_id: str, caller_id: str = Depends(require_user)):
+    if caller_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     try:
         db = get_client()
         row = db.table("user_profiles").select("*").eq("user_id", user_id).limit(1).execute()
@@ -20,7 +23,9 @@ async def get_profile(user_id: str):
 
 
 @router.post("/{user_id}/interests", status_code=204)
-async def set_interests(user_id: str, payload: InterestsPayload):
+async def set_interests(user_id: str, payload: InterestsPayload, caller_id: str = Depends(require_user)):
+    if caller_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     try:
         db = get_client()
         db.table("user_profiles").upsert({

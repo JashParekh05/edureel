@@ -85,13 +85,20 @@ export default function ReelPlayer({ clip, active, onEnded, onFeedback }: Props)
     }
   }, [active, isYT]);
 
-  // YouTube: when clip has a known end time, show "next clip" overlay after duration
+  // YouTube: show "next clip" overlay when the IFrame API fires onStateChange=0 (ended).
+  // We listen via postMessage since we can't reliably time it (buffering, slow connections).
   useEffect(() => {
-    if (!isYT || !active || !clip.duration_seconds) return;
+    if (!isYT || !active) return;
     setClipExpired(false);
-    const timer = setTimeout(() => setClipExpired(true), clip.duration_seconds * 1000);
-    return () => clearTimeout(timer);
-  }, [active, isYT, clip.duration_seconds, clip.id]);
+    function onMessage(e: MessageEvent) {
+      try {
+        const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        if (data?.event === "onStateChange" && data?.info === 0) setClipExpired(true);
+      } catch { /* ignore non-JSON messages */ }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [active, isYT, clip.id]);
 
   return (
     <div className="absolute inset-0 bg-zinc-950 flex items-center justify-center">
@@ -144,8 +151,8 @@ export default function ReelPlayer({ clip, active, onEnded, onFeedback }: Props)
         </div>
       )}
 
-      {/* Caption */}
-      {showCaption && clip.transcript && !clipExpired && (
+      {/* Caption — only for native video; YouTube has built-in CC */}
+      {!isYT && showCaption && clip.transcript && !clipExpired && (
         <div className="absolute bottom-28 left-4 right-16 pointer-events-none">
           <p className="text-white text-sm leading-relaxed bg-black/60 backdrop-blur-sm rounded-xl px-3 py-2 inline-block max-w-full">
             {clip.transcript.slice(0, 140)}

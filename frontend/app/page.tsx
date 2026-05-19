@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { createLearningPath, getUserHistory, type LearningPath, type LearningPathSummary } from "@/lib/api";
+import { createLearningPath, getUserHistory, getUserProfile, type LearningPath, type LearningPathSummary } from "@/lib/api";
 
 const SUGGESTIONS = [
   "I want to learn hashmaps and binary trees",
@@ -14,7 +14,7 @@ const SUGGESTIONS = [
 
 export default function Home() {
   const router = useRouter();
-  const { user, loading, signOut } = useAuth();
+  const { user, session, loading, signOut } = useAuth();
   const [query, setQuery] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [path, setPath] = useState<LearningPath | null>(null);
@@ -27,18 +27,20 @@ export default function Home() {
   }, [user, loading, router]);
 
   useEffect(() => {
-    if (user) {
-      getUserHistory(user.id).then(setHistory).catch(() => {});
-    }
-  }, [user]);
+    if (!user || !session) return;
+    getUserHistory(user.id, session.access_token).then(setHistory).catch(() => {});
+    getUserProfile(user.id, session.access_token).then((p) => {
+      if (!p.onboarding_complete) router.replace("/onboarding");
+    }).catch(() => {});
+  }, [user, session]);
 
   async function handleSubmit(q: string) {
     const trimmed = q.trim();
-    if (!trimmed || !user) return;
+    if (!trimmed || !user || !session) return;
     setSubmitting(true);
     setError("");
     try {
-      const result = await createLearningPath(trimmed, user.id);
+      const result = await createLearningPath(trimmed, user.id, session.access_token);
       setPath(result);
     } catch {
       setError("Something went wrong. Is the backend running?");

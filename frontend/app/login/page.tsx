@@ -30,16 +30,16 @@ export default function LoginPage() {
       const { data, error: err } = await supabase.auth.signUp({ email: trimmedEmail, password });
       setSubmitting(false);
       if (err) { setError(err.message); return; }
-      if (data.user) {
-        const profile = await getUserProfile(data.user.id);
+      if (data.user && data.session) {
+        const profile = await getUserProfile(data.user.id, data.session.access_token);
         router.replace(profile.onboarding_complete ? "/" : "/onboarding");
       }
     } else {
       const { data, error: err } = await supabase.auth.signInWithPassword({ email: trimmedEmail, password });
       setSubmitting(false);
       if (err) { setError(err.message); return; }
-      if (data.user) {
-        const profile = await getUserProfile(data.user.id);
+      if (data.user && data.session) {
+        const profile = await getUserProfile(data.user.id, data.session.access_token);
         router.replace(profile.onboarding_complete ? "/" : "/onboarding");
       }
     }

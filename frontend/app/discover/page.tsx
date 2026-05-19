@@ -8,7 +8,7 @@ import ReelPlayer from "@/components/ReelPlayer";
 
 export default function DiscoverPage() {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, session, loading } = useAuth();
   const [clips, setClips] = useState<Clip[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [fetching, setFetching] = useState(true);
@@ -23,12 +23,12 @@ export default function DiscoverPage() {
   }, [user, loading, router]);
 
   useEffect(() => {
-    if (!user) return;
-    getDiscoverFeed(user.id).then((c) => {
+    if (!user || !session) return;
+    getDiscoverFeed(user.id, session.access_token).then((c) => {
       setClips(c);
       setFetching(false);
     }).catch(() => setFetching(false));
-  }, [user]);
+  }, [user, session]);
 
   activeIndexRef.current = activeIndex;
 
@@ -159,9 +159,9 @@ export default function DiscoverPage() {
             <button
               disabled={loadingMore}
               onClick={() => {
-                if (!user || loadingMore) return;
+                if (!user || !session || loadingMore) return;
                 setLoadingMore(true);
-                getDiscoverFeed(user.id)
+                getDiscoverFeed(user.id, session.access_token)
                   .then((more) => setClips((prev) => [...prev, ...more]))
                   .finally(() => setLoadingMore(false));
               }}

@@ -4,10 +4,11 @@ import random
 import logging
 import asyncio
 from datetime import datetime, timezone
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from app.models.schemas import Clip, ClipEvent, FeedResponse, TopicRecommendation
 from app.db.supabase import get_client
 from app.services.embeddings import embed_text, cosine_similarity, ema_update
+from app.auth import require_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/feed", tags=["feed"])
@@ -568,7 +569,9 @@ def _fetch_discover_clips(
 
 
 @router.get("/discover/{user_id}", response_model=list[Clip])
-async def get_discover_feed(user_id: str, limit: int = Query(20, le=50)):
+async def get_discover_feed(user_id: str, limit: int = Query(20, le=50), caller_id: str = Depends(require_user)):
+    if caller_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     db = get_client()
 
     # Single query: user profile with accumulated vectors

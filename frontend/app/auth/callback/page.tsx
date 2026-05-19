@@ -11,11 +11,12 @@ export default function AuthCallback() {
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
       const userId = data.session?.user?.id;
-      if (!userId) {
+      const token = data.session?.access_token;
+      if (!userId || !token) {
         router.replace("/");
         return;
       }
-      const profile = await getUserProfile(userId);
+      const profile = await getUserProfile(userId, token);
       router.replace(profile.onboarding_complete ? "/" : "/onboarding");
     });
   }, [router]);

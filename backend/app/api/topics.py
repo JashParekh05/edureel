@@ -1,8 +1,9 @@
 import asyncio
 import logging
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from app.models.schemas import TopicRequest, LearningPath
 from app.db.supabase import get_client
+from app.auth import require_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/topics", tags=["topics"])
@@ -17,8 +18,11 @@ async def _process_topic(topic_slug: str, topic_name: str) -> None:
 
 
 @router.post("/", response_model=LearningPath)
-async def create_learning_path(req: TopicRequest, background_tasks: BackgroundTasks):
+async def create_learning_path(req: TopicRequest, background_tasks: BackgroundTasks, caller_id: str = Depends(require_user)):
     from app.agents.curriculum_agent import run_curriculum
+
+    if req.user_id and req.user_id != caller_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     logger.info(f"[topics] Creating learning path for query='{req.query[:80]}' user={req.user_id}")
 
@@ -70,7 +74,9 @@ async def create_learning_path(req: TopicRequest, background_tasks: BackgroundTa
 
 
 @router.get("/history/{user_id}")
-async def get_user_history(user_id: str):
+async def get_user_history(user_id: str, caller_id: str = Depends(require_user)):
+    if caller_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     db = get_client()
     try:
         rows = (
