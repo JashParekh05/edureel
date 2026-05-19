@@ -114,28 +114,25 @@ def _update_interest_vector(db, session_id: str, topic_slug: str, completed: boo
     except Exception as e:
         logger.warning(f"[feed] Failed to upsert session_embeddings for session={session_id}: {e}")
 
-    # Merge into user-level profile for cross-session persistence
+    # Merge into user-level profile for cross-session persistence (atomic via RPC)
     if user_id:
         try:
-            u_row = db.table("user_profiles").select("interest_vector, taste_vector").eq("user_id", user_id).limit(1).execute()
-            u = u_row.data[0] if u_row.data else {}
-            u_interest: dict = u.get("interest_vector") or {}
-            u_taste = _parse_vector(u.get("taste_vector"))
-
-            u_current = float(u_interest.get(topic_slug, 0.0))
-            u_interest[topic_slug] = round(max(-1.0, min(1.0, u_current + delta * 0.5)), 3)
-            u_interest = {k: v for k, v in u_interest.items() if abs(v) >= 0.05}
-
-            user_upsert: dict = {"user_id": user_id, "interest_vector": u_interest}
-            if new_taste is not None:
-                if u_taste and len(u_taste) == len(new_taste):
-                    user_upsert["taste_vector"] = ema_update(u_taste, new_taste, alpha=0.1)
-                else:
-                    user_upsert["taste_vector"] = new_taste
-
-            db.table("user_profiles").upsert(user_upsert).execute()
+            db.rpc("merge_user_interest", {
+                "p_user_id": user_id,
+                "p_topic_slug": topic_slug,
+                "p_delta": round(delta * 0.5, 4),
+            }).execute()
         except Exception as e:
-            logger.warning(f"Failed to update user-level vectors for {user_id}: {e}")
+            logger.warning(f"Failed to update user-level interest for {user_id}: {e}")
+
+        if new_taste is not None:
+            try:
+                u_row = db.table("user_profiles").select("taste_vector").eq("user_id", user_id).limit(1).execute()
+                u_taste = _parse_vector((u_row.data[0] if u_row.data else {}).get("taste_vector"))
+                merged_taste = ema_update(u_taste, new_taste, alpha=0.1) if u_taste and len(u_taste) == len(new_taste) else new_taste
+                db.table("user_profiles").upsert({"user_id": user_id, "taste_vector": merged_taste}).execute()
+            except Exception as e:
+                logger.warning(f"Failed to update taste_vector for {user_id}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -319,12 +316,12 @@ def _fetch_clips_for_slug(
 # ---------------------------------------------------------------------------
 
 @router.get("/path/{session_id}", response_model=list[FeedResponse])
-async def get_path_feed(session_id: str):
+async def get_path_feed(session_id: str, caller_id: str = Depends(require_user)):
     db = get_client()
     try:
         path = (
             db.table("learning_paths")
-            .select("topic_slugs, user_query")
+            .select("topic_slugs, user_query, user_id")
             .eq("session_id", session_id)
             .limit(1)
             .execute()
@@ -334,6 +331,8 @@ async def get_path_feed(session_id: str):
         return []
     if not path.data:
         return []
+    if path.data[0].get("user_id") and path.data[0]["user_id"] != caller_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     user_query = path.data[0].get("user_query", "")
     seen_ids, topic_completion = _get_session_telemetry(db, session_id)
@@ -438,12 +437,12 @@ async def get_path_feed(session_id: str):
 
 
 @router.get("/recommendations/{session_id}", response_model=list[TopicRecommendation])
-async def get_recommendations(session_id: str):
+async def get_recommendations(session_id: str, caller_id: str = Depends(require_user)):
     db = get_client()
     try:
         path = (
             db.table("learning_paths")
-            .select("topic_slugs")
+            .select("topic_slugs, user_id")
             .eq("session_id", session_id)
             .limit(1)
             .execute()
@@ -453,6 +452,8 @@ async def get_recommendations(session_id: str):
         return []
     if not path.data:
         return []
+    if path.data[0].get("user_id") and path.data[0]["user_id"] != caller_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     path_slugs = path.data[0]["topic_slugs"]
 
     from app.agents.recommendation_agent import run_recommendations
@@ -464,6 +465,7 @@ async def get_feed(
     topic_slug: str,
     offset: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=50),
+    caller_id: str = Depends(require_user),
 ):
     db = get_client()
     try:
@@ -608,7 +610,7 @@ async def get_discover_feed(user_id: str, limit: int = Query(20, le=50), caller_
 
 
 @router.post("/{clip_id}/events", status_code=204)
-async def record_clip_event(clip_id: str, event: ClipEvent):
+async def record_clip_event(clip_id: str, event: ClipEvent, caller_id: str = Depends(require_user)):
     db = get_client()
     try:
         db.table("clip_events").insert({

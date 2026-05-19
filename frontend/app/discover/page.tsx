@@ -140,7 +140,7 @@ export default function DiscoverPage() {
               clip={clip}
               active={i === activeIndex}
               onEnded={() => goTo(i + 1)}
-              onFeedback={(type) => recordClipEvent(clip.id, 0, false, null, 0, type)}
+              onFeedback={(type) => recordClipEvent(clip.id, 0, false, null, 0, type, session?.access_token ?? "")}
             />
           </div>
         ))}

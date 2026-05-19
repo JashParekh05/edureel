@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import { getPathFeed, getTopicFeed, recordClipEvent, getRecommendations, type Clip, type FeedResponse, type TopicRecommendation } from "@/lib/api";
 import ReelPlayer from "@/components/ReelPlayer";
 
@@ -10,6 +11,7 @@ const POLL_INTERVAL_MS = 4000;
 function FeedContent() {
   const params = useSearchParams();
   const router = useRouter();
+  const { session } = useAuth();
   const sessionId = params.get("session");
   const topicSlug = params.get("topic");
 
@@ -38,7 +40,7 @@ function FeedContent() {
   const loadFeed = useCallback(async () => {
     try {
       if (sessionId) {
-        const feeds: FeedResponse[] = await getPathFeed(sessionId);
+        const feeds: FeedResponse[] = await getPathFeed(sessionId, session?.access_token ?? "");
         const allClips = feeds.flatMap((f) => f.clips);
         const labels: Record<string, string> = {};
         feeds.forEach((f) => {
@@ -49,12 +51,17 @@ function FeedContent() {
           const idx = allClips.findIndex((c) => labels[c.id] === startTopicSlug);
           if (idx >= 0) resolvedStartRef.current = idx;
         }
-        setClips(allClips);
-        setTopicLabels(labels);
+        setClips((prev) => {
+          if (prev.length === 0) return allClips;
+          const existingIds = new Set(prev.map((c) => c.id));
+          const brandNew = allClips.filter((c) => !existingIds.has(c.id));
+          return brandNew.length > 0 ? [...prev, ...brandNew] : prev;
+        });
+        setTopicLabels((prev) => ({ ...prev, ...labels }));
         setProcessing(feeds.some((f) => f.processing));
         setLoadError(false);
       } else if (topicSlug) {
-        const feed = await getTopicFeed(topicSlug);
+        const feed = await getTopicFeed(topicSlug, session?.access_token ?? "");
         setClips(feed.clips);
         setProcessing(feed.processing);
         setLoadError(false);
@@ -65,13 +72,13 @@ function FeedContent() {
     } catch {
       setLoadError(true);
     }
-  }, [sessionId, topicSlug]);
+  }, [sessionId, topicSlug, session]);
 
   const fetchMore = useCallback(async () => {
     if (!sessionId || fetchingMoreRef.current) return;
     fetchingMoreRef.current = true;
     try {
-      const feeds: FeedResponse[] = await getPathFeed(sessionId);
+      const feeds: FeedResponse[] = await getPathFeed(sessionId, session?.access_token ?? "");
       const newClips = feeds.flatMap((f) => f.clips).filter((c) => !seenClipIdsRef.current.has(c.id));
       if (newClips.length === 0) return;
       const newLabels: Record<string, string> = {};
@@ -149,7 +156,7 @@ function FeedContent() {
       const watchMs = Date.now() - clipStartRef.current;
       const durationMs = (leavingClip.duration_seconds ?? 60) * 1000;
       const visits = clipVisitsRef.current[leavingClip.id] ?? 1;
-      recordClipEvent(leavingClip.id, watchMs, watchMs >= durationMs * 0.8, sessionId, Math.max(0, visits - 1));
+      recordClipEvent(leavingClip.id, watchMs, watchMs >= durationMs * 0.8, sessionId, Math.max(0, visits - 1), null, session?.access_token ?? "");
     }
 
     clipStartRef.current = Date.now();
@@ -219,7 +226,7 @@ function FeedContent() {
   // Fetch recommendations when user reaches the last clip
   useEffect(() => {
     if (!sessionId || clips.length === 0 || activeIndex < clips.length - 1) return;
-    getRecommendations(sessionId).then(setRecommendations).catch(() => {});
+    getRecommendations(sessionId, session?.access_token ?? "").then(setRecommendations).catch(() => {});
   }, [activeIndex, clips.length, sessionId]);
 
   // Derive current topic name from active clip
@@ -354,7 +361,7 @@ function FeedContent() {
               active={i === activeIndex}
               onEnded={() => goTo(i + 1)}
               onFeedback={sessionId ? (type) => {
-                recordClipEvent(clip.id, Date.now() - clipStartRef.current, false, sessionId, 0, type);
+                recordClipEvent(clip.id, Date.now() - clipStartRef.current, false, sessionId, 0, type, session?.access_token ?? "");
                 if (type === "already_know") {
                   setClips((prev) => prev.filter((c) => c.id === clip.id || topicLabels[c.id] !== topicLabels[clip.id]));
                   goTo(i + 1);

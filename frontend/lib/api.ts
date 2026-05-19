@@ -29,6 +29,7 @@ export interface Clip {
   source_url: string | null;
   source_platform: string | null;
   hook_score: number;
+  final_score: number | null;
 }
 
 export interface FeedResponse {
@@ -73,18 +74,22 @@ export async function getUserHistory(userId: string, token: string): Promise<Lea
 
 export async function getTopicFeed(
   topicSlug: string,
+  token: string,
   offset = 0,
-  limit = 10
+  limit = 10,
 ): Promise<FeedResponse> {
   const res = await fetch(
-    `${API_BASE}/api/feed/${topicSlug}?offset=${offset}&limit=${limit}`
+    `${API_BASE}/api/feed/${topicSlug}?offset=${offset}&limit=${limit}`,
+    { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!res.ok) throw new Error("Failed to fetch feed");
   return res.json();
 }
 
-export async function getPathFeed(sessionId: string): Promise<FeedResponse[]> {
-  const res = await fetch(`${API_BASE}/api/feed/path/${sessionId}`);
+export async function getPathFeed(sessionId: string, token: string): Promise<FeedResponse[]> {
+  const res = await fetch(`${API_BASE}/api/feed/path/${sessionId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!res.ok) throw new Error("Failed to fetch path feed");
   return res.json();
 }
@@ -97,8 +102,10 @@ export interface TopicRecommendation {
   rationale: string;
 }
 
-export async function getRecommendations(sessionId: string): Promise<TopicRecommendation[]> {
-  const res = await fetch(`${API_BASE}/api/feed/recommendations/${sessionId}`);
+export async function getRecommendations(sessionId: string, token: string): Promise<TopicRecommendation[]> {
+  const res = await fetch(`${API_BASE}/api/feed/recommendations/${sessionId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!res.ok) return [];
   return res.json();
 }
@@ -138,13 +145,14 @@ export function recordClipEvent(
   clipId: string,
   watchMs: number,
   completed: boolean,
-  sessionId?: string | null,
-  replayCount?: number,
-  feedback?: "want_more" | "already_know" | null,
+  sessionId: string | null | undefined,
+  replayCount: number | undefined,
+  feedback: "want_more" | "already_know" | null | undefined,
+  token: string,
 ): void {
   fetch(`${API_BASE}/api/feed/${clipId}/events`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       watch_ms: watchMs,
       completed,
@@ -152,5 +160,5 @@ export function recordClipEvent(
       replay_count: replayCount ?? 0,
       feedback: feedback ?? null,
     }),
-  }).catch(() => {});
+  }).catch((err) => console.warn("[recordClipEvent] failed:", err));
 }
