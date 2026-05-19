@@ -137,6 +137,7 @@ def _node_segment(state: PipelineState) -> dict:
 def _node_store(state: PipelineState) -> dict:
     from app.db.supabase import get_client
     db = get_client()
+    db.table("clips").delete().eq("topic_slug", state["topic_slug"]).execute()
     stored = 0
     for clip in state["clips"]:
         try:

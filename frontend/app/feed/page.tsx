@@ -13,6 +13,7 @@ function FeedContent() {
   const sessionId = params.get("session");
   const topicSlug = params.get("topic");
 
+  const startTopicSlug = params.get("start_topic") ?? null;
   const startIndex = Math.max(0, parseInt(params.get("start") ?? "0") || 0);
 
   const [clips, setClips] = useState<Clip[]>([]);
@@ -46,6 +47,12 @@ function FeedContent() {
         setClips(allClips);
         setTopicLabels(labels);
         setProcessing(feeds.some((f) => f.processing));
+        if (startTopicSlug) {
+          const idx = allClips.findIndex((c) => labels[c.id] === startTopicSlug);
+          if (idx > 0) {
+            resolvedStartRef.current = idx;
+          }
+        }
       } else if (topicSlug) {
         const feed = await getTopicFeed(topicSlug);
         setClips(feed.clips);
@@ -81,22 +88,24 @@ function FeedContent() {
   }, [sessionId]);
 
   const initialScrollDoneRef = useRef(false);
+  const resolvedStartRef = useRef<number>(startIndex);
 
   useEffect(() => {
     loadFeed();
     clipStartRef.current = Date.now();
   }, [loadFeed]);
 
-  // Scroll to startIndex once clips are available
+  // Scroll to resolved start index once clips are available
   useEffect(() => {
-    if (initialScrollDoneRef.current || clips.length === 0 || startIndex === 0) return;
-    if (clips.length > startIndex) {
+    const target = resolvedStartRef.current;
+    if (initialScrollDoneRef.current || clips.length === 0 || target === 0) return;
+    if (clips.length > target) {
       initialScrollDoneRef.current = true;
-      const el = containerRef.current?.querySelectorAll("[data-index]")[startIndex] as HTMLElement;
+      const el = containerRef.current?.querySelectorAll("[data-index]")[target] as HTMLElement;
       el?.scrollIntoView({ behavior: "instant" });
-      setActiveIndex(startIndex);
+      setActiveIndex(target);
     }
-  }, [clips.length, startIndex]);
+  }, [clips.length]);
 
   useEffect(() => {
     if (processing) {
@@ -308,6 +317,13 @@ function FeedContent() {
               clip={clip}
               active={i === activeIndex}
               onEnded={() => goTo(i + 1)}
+              onFeedback={sessionId ? (type) => {
+                recordClipEvent(clip.id, Date.now() - clipStartRef.current, false, sessionId, 0, type);
+                if (type === "already_know") {
+                  setClips((prev) => prev.filter((c) => c.id === clip.id || topicLabels[c.id] !== topicLabels[clip.id]));
+                  goTo(i + 1);
+                }
+              } : undefined}
             />
           </div>
         ))}

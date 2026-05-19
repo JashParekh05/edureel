@@ -7,6 +7,7 @@ interface Props {
   clip: Clip;
   active: boolean;
   onEnded: () => void;
+  onFeedback?: (type: "want_more" | "already_know") => void;
 }
 
 function isYouTubeEmbed(url: string) {
@@ -55,11 +56,12 @@ function SourceBadge({ platform }: { platform: string | null }) {
   );
 }
 
-export default function ReelPlayer({ clip, active, onEnded }: Props) {
+export default function ReelPlayer({ clip, active, onEnded, onFeedback }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [showCaption, setShowCaption] = useState(true);
   const [clipExpired, setClipExpired] = useState(false);
+  const [feedback, setFeedback] = useState<"want_more" | "already_know" | null>(null);
 
   const isYT = isYouTubeEmbed(clip.video_url);
   const { end } = parseYTParams(clip.video_url);
@@ -67,6 +69,7 @@ export default function ReelPlayer({ clip, active, onEnded }: Props) {
   // Reset state when clip changes
   useEffect(() => {
     setClipExpired(false);
+    setFeedback(null);
   }, [clip.id]);
 
   // Native video: play/reset on active
@@ -151,6 +154,32 @@ export default function ReelPlayer({ clip, active, onEnded }: Props) {
 
       {/* Right controls */}
       <div className="absolute right-3 bottom-16 flex flex-col gap-3 items-center z-10">
+        {onFeedback && (
+          <>
+            <button
+              onClick={() => { setFeedback("want_more"); onFeedback("want_more"); }}
+              className={`w-11 h-11 rounded-full backdrop-blur-sm border flex items-center justify-center text-lg transition active:scale-95 ${
+                feedback === "want_more"
+                  ? "bg-orange-500/80 border-orange-400 text-white"
+                  : "bg-black/30 border-zinc-700 text-zinc-400 hover:border-orange-500/60 hover:text-orange-400"
+              }`}
+              title="I want more of this"
+            >
+              🔥
+            </button>
+            <button
+              onClick={() => { setFeedback("already_know"); onFeedback("already_know"); }}
+              className={`w-11 h-11 rounded-full backdrop-blur-sm border flex items-center justify-center text-lg transition active:scale-95 ${
+                feedback === "already_know"
+                  ? "bg-emerald-500/80 border-emerald-400 text-white"
+                  : "bg-black/30 border-zinc-700 text-zinc-400 hover:border-emerald-500/60 hover:text-emerald-400"
+              }`}
+              title="I already know this topic"
+            >
+              ✓
+            </button>
+          </>
+        )}
         <button
           onClick={() => setShowCaption((c) => !c)}
           className={`w-11 h-11 rounded-full backdrop-blur-sm border flex items-center justify-center text-xs font-bold transition ${

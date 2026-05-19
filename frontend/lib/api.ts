@@ -53,6 +53,7 @@ export async function createLearningPath(
 export interface LearningPathSummary {
   session_id: string;
   user_query: string;
+  topic_slugs: string[];
   topic_count: number;
   created_at: string;
 }
@@ -126,9 +127,9 @@ export function recordClipEvent(
   watchMs: number,
   completed: boolean,
   sessionId?: string | null,
-  replayCount?: number
+  replayCount?: number,
+  feedback?: "want_more" | "already_know" | null,
 ): void {
-  // Fire-and-forget — don't block the UI
   fetch(`${API_BASE}/api/feed/${clipId}/events`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -137,6 +138,7 @@ export function recordClipEvent(
       completed,
       session_id: sessionId ?? null,
       replay_count: replayCount ?? 0,
+      feedback: feedback ?? null,
     }),
   }).catch(() => {});
 }

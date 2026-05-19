@@ -16,7 +16,7 @@ async def _process_topic(topic_slug: str, topic_name: str) -> None:
 @router.post("/", response_model=LearningPath)
 async def create_learning_path(req: TopicRequest, background_tasks: BackgroundTasks):
     from app.agents.curriculum_agent import run_curriculum
-    path = run_curriculum(req.query, req.user_id)
+    path = run_curriculum(req.query)
 
     db = get_client()
     db.table("learning_paths").insert(
@@ -45,16 +45,8 @@ async def create_learning_path(req: TopicRequest, background_tasks: BackgroundTa
                 }
             ).execute()
 
-        clips = (
-            db.table("clips")
-            .select("id")
-            .eq("topic_slug", topic.slug)
-            .limit(1)
-            .execute()
-        )
-        if not clips.data:
-            background_tasks.add_task(_process_topic, topic.slug, topic.name)
-            logger.info(f"[YouTube API] Queued search for '{topic.slug}' (~101 units)")
+        background_tasks.add_task(_process_topic, topic.slug, topic.name)
+        logger.info(f"[YouTube API] Queued search for '{topic.slug}' (~101 units)")
 
     return path
 
@@ -74,6 +66,7 @@ async def get_user_history(user_id: str):
         {
             "session_id": r["session_id"],
             "user_query": r["user_query"],
+            "topic_slugs": r["topic_slugs"] or [],
             "topic_count": len(r["topic_slugs"] or []),
             "created_at": r["created_at"],
         }

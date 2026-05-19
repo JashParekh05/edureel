@@ -42,7 +42,7 @@ def _get_session_telemetry(db, session_id: str) -> tuple[set[str], dict[str, flo
     return seen_ids, topic_completion
 
 
-def _update_interest_vector(db, session_id: str, topic_slug: str, completed: bool, replay_count: int) -> None:
+def _update_interest_vector(db, session_id: str, topic_slug: str, completed: bool, replay_count: int, feedback: str | None = None) -> None:
     """Real-time interest vector update after a clip event (Monolith-inspired)."""
     existing = (
         db.table("session_embeddings")
@@ -53,7 +53,13 @@ def _update_interest_vector(db, session_id: str, topic_slug: str, completed: boo
     )
     vector = existing.data[0]["interest_vector"] if existing.data else {}
 
-    delta = (0.15 if completed else -0.05) + replay_count * 0.3
+    if feedback == "want_more":
+        delta = 0.6
+    elif feedback == "already_know":
+        delta = -1.0  # pin to minimum
+    else:
+        delta = (0.15 if completed else -0.05) + replay_count * 0.3
+
     current = float(vector.get(topic_slug, 0.0))
     vector[topic_slug] = round(max(-1.0, min(1.0, current + delta)), 3)
 
@@ -266,6 +272,10 @@ async def get_path_feed(session_id: str):
 
     feeds = []
     for slug in path.data[0]["topic_slugs"]:
+        # Skip topics the user has marked as already known
+        if interest_vector.get(slug, 0.0) <= -0.8:
+            continue
+
         clips = _fetch_clips_for_slug(
             db, slug,
             seen_ids=seen_ids,
@@ -285,6 +295,9 @@ async def get_path_feed(session_id: str):
             clips=clips,
             processing=len(clips) == 0,
         ))
+
+    # Bubble "want more" topics (high interest) to the front
+    feeds.sort(key=lambda f: interest_vector.get(f.topic_slug, 0.0), reverse=True)
 
     return _interleave_topics(feeds)
 
@@ -421,5 +434,5 @@ async def record_clip_event(clip_id: str, event: ClipEvent):
         if clip.data:
             _update_interest_vector(
                 db, event.session_id, clip.data[0]["topic_slug"],
-                event.completed, event.replay_count,
+                event.completed, event.replay_count, event.feedback,
             )

@@ -43,6 +43,7 @@ class ClipEvent(BaseModel):
     watch_ms: int
     completed: bool = False
     replay_count: int = 0
+    feedback: Literal["want_more", "already_know"] | None = None
 
 
 class TopicRequest(BaseModel):

@@ -20,6 +20,7 @@ export default function Home() {
   const [path, setPath] = useState<LearningPath | null>(null);
   const [error, setError] = useState("");
   const [history, setHistory] = useState<LearningPathSummary[]>([]);
+  const [expandedSession, setExpandedSession] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -121,11 +122,27 @@ export default function Home() {
                   {history.map((h) => (
                     <button
                       key={h.session_id}
-                      onClick={() => router.push(`/feed?session=${h.session_id}`)}
-                      className="w-full text-left bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 hover:bg-zinc-800 active:scale-[0.98] transition"
+                      onClick={() => setPath({
+                        session_id: h.session_id,
+                        user_query: h.user_query,
+                        topics: h.topic_slugs.map((slug) => ({
+                          slug,
+                          name: slug.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" "),
+                          difficulty: "beginner" as const,
+                          prerequisites: [],
+                          rationale: "",
+                        })),
+                        summary: h.user_query,
+                        familiarity_prompt: null,
+                        suggested_start_index: 0,
+                      })}
+                      className="w-full text-left bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 hover:bg-zinc-800 hover:border-zinc-700 active:scale-[0.98] transition flex items-center justify-between"
                     >
-                      <p className="text-white text-sm font-medium line-clamp-1">{h.user_query}</p>
-                      <p className="text-zinc-500 text-xs mt-0.5">{h.topic_count} topics</p>
+                      <div>
+                        <p className="text-white text-sm font-medium line-clamp-1">{h.user_query}</p>
+                        <p className="text-zinc-500 text-xs mt-0.5">{h.topic_count} topics</p>
+                      </div>
+                      <span className="text-zinc-500 text-xs">→</span>
                     </button>
                   ))}
                 </div>
@@ -138,15 +155,20 @@ export default function Home() {
           <div className="space-y-6">
             <div className="bg-zinc-900 rounded-2xl p-5 space-y-4">
               <p className="text-zinc-300 text-sm">{path.summary}</p>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {path.topics.map((topic, i) => (
-                  <div key={topic.slug} className="flex items-start gap-3">
-                    <span className="text-zinc-600 text-sm mt-0.5 w-5">{i + 1}.</span>
-                    <div>
-                      <p className="font-medium">{topic.name}</p>
-                      <p className="text-zinc-500 text-xs capitalize">{topic.difficulty}</p>
+                  <button
+                    key={topic.slug}
+                    onClick={() => router.push(`/feed?session=${path.session_id}&start_topic=${topic.slug}`)}
+                    className="w-full flex items-center gap-3 text-left rounded-xl px-4 py-3 bg-zinc-800/50 border border-zinc-700/50 hover:bg-zinc-700/60 hover:border-zinc-600 active:scale-[0.98] transition cursor-pointer"
+                  >
+                    <span className="text-zinc-500 text-xs w-5 shrink-0">{i + 1}.</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-white text-sm">{topic.name}</p>
+                      <p className="text-zinc-500 text-xs capitalize mt-0.5">{topic.difficulty}</p>
                     </div>
-                  </div>
+                    <span className="text-zinc-400 text-sm shrink-0">▶</span>
+                  </button>
                 ))}
               </div>
             </div>
