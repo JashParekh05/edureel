@@ -13,6 +13,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/feed", tags=["feed"])
 
 
+def _parse_vector(v) -> list[float] | None:
+    """Supabase returns pgvector columns as strings; parse them to list[float]."""
+    if v is None:
+        return None
+    if isinstance(v, list):
+        return v
+    if isinstance(v, str):
+        import json as _json
+        try:
+            return _json.loads(v)
+        except Exception:
+            return None
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Telemetry helpers
 # ---------------------------------------------------------------------------
@@ -29,11 +44,17 @@ def _get_session_telemetry(db, session_id: str) -> tuple[set[str], dict[str, flo
     seen_ids: set[str] = set()
     topic_watches: dict[str, list[bool]] = {}
 
+    clip_ids = list({ev["clip_id"] for ev in events.data})
+    seen_ids = set(clip_ids)
+
+    slug_lookup: dict[str, str] = {}
+    if clip_ids:
+        clips_res = db.table("clips").select("id, topic_slug").in_("id", clip_ids).execute()
+        slug_lookup = {c["id"]: c["topic_slug"] for c in clips_res.data}
+
     for ev in events.data:
-        seen_ids.add(ev["clip_id"])
-        clip = db.table("clips").select("topic_slug").eq("id", ev["clip_id"]).limit(1).execute()
-        if clip.data:
-            slug = clip.data[0]["topic_slug"]
+        slug = slug_lookup.get(ev["clip_id"])
+        if slug:
             topic_watches.setdefault(slug, []).append(ev["completed"])
 
     topic_completion = {
@@ -43,7 +64,7 @@ def _get_session_telemetry(db, session_id: str) -> tuple[set[str], dict[str, flo
     return seen_ids, topic_completion
 
 
-def _update_interest_vector(db, session_id: str, topic_slug: str, completed: bool, replay_count: int, feedback: str | None = None, clip_embedding: list[float] | None = None) -> None:
+def _update_interest_vector(db, session_id: str, topic_slug: str, completed: bool, replay_count: int, feedback: str | None = None, clip_embedding: list[float] | None = None, user_id: str | None = None) -> None:
     """Real-time interest vector + taste vector update after a clip event."""
     existing = (
         db.table("session_embeddings")
@@ -54,7 +75,7 @@ def _update_interest_vector(db, session_id: str, topic_slug: str, completed: boo
     )
     row = existing.data[0] if existing.data else {}
     vector: dict = row.get("interest_vector") or {}
-    taste: list[float] | None = row.get("taste_vector")
+    taste: list[float] | None = _parse_vector(row.get("taste_vector"))
 
     if feedback == "want_more":
         delta = 0.6
@@ -84,6 +105,28 @@ def _update_interest_vector(db, session_id: str, topic_slug: str, completed: boo
         upsert_data["taste_vector"] = new_taste
 
     db.table("session_embeddings").upsert(upsert_data).execute()
+
+    # Merge into user-level profile for cross-session persistence
+    if user_id:
+        try:
+            u_row = db.table("user_profiles").select("interest_vector, taste_vector").eq("user_id", user_id).limit(1).execute()
+            u = u_row.data[0] if u_row.data else {}
+            u_interest: dict = u.get("interest_vector") or {}
+            u_taste = _parse_vector(u.get("taste_vector"))
+
+            u_current = float(u_interest.get(topic_slug, 0.0))
+            u_interest[topic_slug] = round(max(-1.0, min(1.0, u_current + delta * 0.5)), 3)
+
+            user_upsert: dict = {"user_id": user_id, "interest_vector": u_interest}
+            if new_taste is not None:
+                if u_taste and len(u_taste) == len(new_taste):
+                    user_upsert["taste_vector"] = ema_update(u_taste, new_taste, alpha=0.1)
+                else:
+                    user_upsert["taste_vector"] = new_taste
+
+            db.table("user_profiles").upsert(user_upsert).execute()
+        except Exception as e:
+            logger.warning(f"Failed to update user-level vectors for {user_id}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -296,9 +339,32 @@ async def get_path_feed(session_id: str):
         .limit(1)
         .execute()
     )
-    iv_row = iv_res.data[0] if iv_res.data else {}
-    interest_vector: dict[str, float] = iv_row.get("interest_vector") or {}
-    taste_vector: list[float] | None = iv_row.get("taste_vector")
+    if iv_res.data:
+        iv_row = iv_res.data[0]
+        interest_vector: dict[str, float] = iv_row.get("interest_vector") or {}
+        taste_vector: list[float] | None = _parse_vector(iv_row.get("taste_vector"))
+    else:
+        # New session — seed from user-level profile
+        interest_vector = {}
+        taste_vector = None
+        path_user = db.table("learning_paths").select("user_id").eq("session_id", session_id).limit(1).execute()
+        if path_user.data and path_user.data[0].get("user_id"):
+            uid = path_user.data[0]["user_id"]
+            up = db.table("user_profiles").select("taste_vector, interest_vector").eq("user_id", uid).limit(1).execute()
+            if up.data:
+                interest_vector = up.data[0].get("interest_vector") or {}
+                taste_vector = _parse_vector(up.data[0].get("taste_vector"))
+                seed_row: dict = {
+                    "session_id": session_id,
+                    "interest_vector": interest_vector,
+                    "updated_at": "now()",
+                }
+                if taste_vector is not None:
+                    seed_row["taste_vector"] = taste_vector
+                try:
+                    db.table("session_embeddings").upsert(seed_row).execute()
+                except Exception as e:
+                    logger.warning(f"Failed to seed session_embeddings for {session_id}: {e}")
 
     feeds = []
     for slug in path.data[0]["topic_slugs"]:
@@ -416,9 +482,10 @@ def _fetch_discover_clips(
     all_slugs: list[str],
     seen_ids: set[str],
     limit: int,
+    interest_vector: dict[str, float] | None = None,
+    taste_vector: list[float] | None = None,
 ) -> list[Clip]:
     relevant_limit = int(limit * 0.6)
-    diversity_limit = limit - relevant_limit
 
     clips: list[Clip] = []
 
@@ -442,8 +509,8 @@ def _fetch_discover_clips(
 
     clip_ids = [c.id for c in clips]
     pop_stats = _get_clip_population_stats(db, clip_ids)
-    clips = _compute_scores(clips, pop_stats, None)
-    random.shuffle(clips)  # mix rather than pure score sort for serendipity
+    clips = _compute_scores(clips, pop_stats, None, interest_vector=interest_vector, taste_vector=taste_vector)
+    random.shuffle(clips)
     return clips[:limit]
 
 
@@ -451,26 +518,26 @@ def _fetch_discover_clips(
 async def get_discover_feed(user_id: str, limit: int = Query(20, le=50)):
     db = get_client()
 
-    profile = db.table("user_profiles").select("interests").eq("user_id", user_id).limit(1).execute()
-    interests: list[str] = profile.data[0]["interests"] if profile.data else []
+    # Single query: user profile with accumulated vectors
+    profile = db.table("user_profiles").select("interests, taste_vector, interest_vector").eq("user_id", user_id).limit(1).execute()
+    p = profile.data[0] if profile.data else {}
+    interests: list[str] = p.get("interests") or []
+    taste_vector = _parse_vector(p.get("taste_vector"))
+    user_interest_vector: dict[str, float] = p.get("interest_vector") or {}
 
+    # Build seen_ids from all sessions — single batched query
     paths = db.table("learning_paths").select("session_id").eq("user_id", user_id).execute()
+    session_ids = [p["session_id"] for p in paths.data]
     seen_ids: set[str] = set()
-    taste_vector: list[float] | None = None
-    for p in paths.data:
-        events = db.table("clip_events").select("clip_id").eq("session_id", p["session_id"]).execute()
-        seen_ids.update(e["clip_id"] for e in events.data)
-        # Use taste_vector from the most recent session that has one
-        if taste_vector is None:
-            iv = db.table("session_embeddings").select("taste_vector").eq("session_id", p["session_id"]).limit(1).execute()
-            if iv.data and iv.data[0].get("taste_vector"):
-                taste_vector = iv.data[0]["taste_vector"]
+    if session_ids:
+        events = db.table("clip_events").select("clip_id").in_("session_id", session_ids).execute()
+        seen_ids = {e["clip_id"] for e in events.data}
 
     all_topics = db.table("topics").select("slug").execute()
     all_slugs = [t["slug"] for t in all_topics.data]
     relevant_slugs = _match_interest_slugs(interests, all_slugs, taste_vector=taste_vector)
 
-    return _fetch_discover_clips(db, relevant_slugs, all_slugs, seen_ids, limit)
+    return _fetch_discover_clips(db, relevant_slugs, all_slugs, seen_ids, limit, interest_vector=user_interest_vector, taste_vector=taste_vector)
 
 
 @router.post("/{clip_id}/events", status_code=204)
@@ -491,8 +558,12 @@ async def record_clip_event(clip_id: str, event: ClipEvent):
     if event.session_id:
         clip = db.table("clips").select("topic_slug, embedding").eq("id", clip_id).limit(1).execute()
         if clip.data:
+            raw_emb = _parse_vector(clip.data[0].get("embedding"))
+            path = db.table("learning_paths").select("user_id").eq("session_id", event.session_id).limit(1).execute()
+            user_id = path.data[0].get("user_id") if path.data else None
             _update_interest_vector(
                 db, event.session_id, clip.data[0]["topic_slug"],
                 event.completed, event.replay_count, event.feedback,
-                clip_embedding=clip.data[0].get("embedding"),
+                clip_embedding=raw_emb,
+                user_id=user_id,
             )

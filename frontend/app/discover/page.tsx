@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { getDiscoverFeed, type Clip } from "@/lib/api";
+import { getDiscoverFeed, recordClipEvent, type Clip } from "@/lib/api";
 import ReelPlayer from "@/components/ReelPlayer";
 
 export default function DiscoverPage() {
@@ -135,7 +135,12 @@ export default function DiscoverPage() {
       <div ref={containerRef} className="h-full overflow-y-scroll snap-y snap-mandatory" style={{ scrollbarWidth: "none" }}>
         {clips.map((clip, i) => (
           <div key={clip.id} data-index={i} className="w-full snap-start snap-always relative" style={{ height: "100dvh" }}>
-            <ReelPlayer clip={clip} active={i === activeIndex} onEnded={() => goTo(i + 1)} />
+            <ReelPlayer
+              clip={clip}
+              active={i === activeIndex}
+              onEnded={() => goTo(i + 1)}
+              onFeedback={(type) => recordClipEvent(clip.id, 0, false, null, 0, type)}
+            />
           </div>
         ))}
 

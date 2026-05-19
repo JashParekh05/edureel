@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+import json
+from pydantic import BaseModel, field_validator
 from typing import Literal
 
 
@@ -33,6 +34,13 @@ class Clip(BaseModel):
     hook_score: float = 0.5
     created_at: str | None = None
     embedding: list[float] | None = None
+
+    @field_validator("embedding", mode="before")
+    @classmethod
+    def parse_embedding(cls, v):
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
 
 
 class InterestsPayload(BaseModel):

@@ -25,18 +25,24 @@ def main():
     while True:
         rows = (
             db.table("clips")
-            .select("id, title, transcript")
-            .is_("embedding", "null")
+            .select("id, title, transcript, embedding")
             .range(offset, offset + BATCH - 1)
             .execute()
         )
         if not rows.data:
             break
 
-        texts = [r.get("transcript") or r.get("title", "") for r in rows.data]
+        to_embed = [r for r in rows.data if not r.get("embedding")]
+        if not to_embed:
+            offset += BATCH
+            if len(rows.data) < BATCH:
+                break
+            continue
+
+        texts = [r.get("transcript") or r.get("title", "") for r in to_embed]
         embeddings = embed_texts(texts)
 
-        for row, emb in zip(rows.data, embeddings):
+        for row, emb in zip(to_embed, embeddings):
             if emb is None:
                 continue
             db.table("clips").update({"embedding": emb}).eq("id", row["id"]).execute()
