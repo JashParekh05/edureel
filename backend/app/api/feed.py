@@ -1,10 +1,11 @@
 import math
 import re
+import time
 import random
 import logging
 import asyncio
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from app.models.schemas import Clip, ClipEvent, FeedResponse, TopicRecommendation
 from app.db.supabase import get_client
 from app.services.embeddings import embed_text, cosine_similarity, ema_update
@@ -12,6 +13,69 @@ from app.auth import require_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/feed", tags=["feed"])
+
+# In-memory throttle for path auto-extension. Prevents 4s-poll storm from queuing
+# multiple extensions per session. Best-effort only — fine if it drops on restart.
+_LOW_CLIPS_THRESHOLD = 5            # extend when unseen clips fall below this
+_EXTEND_COOLDOWN_S = 60             # don't re-extend a session within this window
+_extending_sessions: dict[str, float] = {}
+
+
+def _should_extend(session_id: str) -> bool:
+    """Returns True if this session is eligible for auto-extension right now."""
+    now = time.time()
+    last = _extending_sessions.get(session_id, 0)
+    if now - last < _EXTEND_COOLDOWN_S:
+        return False
+    _extending_sessions[session_id] = now
+    return True
+
+
+async def _extend_path(session_id: str) -> None:
+    """Background: pick the next topic via recommendation_agent and add it to the path.
+    Uses user's accumulated taste/interest vectors to choose what's next."""
+    from app.agents.recommendation_agent import run_recommendations
+    from app.api.topics import _process_topics_sequential
+
+    db = get_client()
+    try:
+        path = (
+            db.table("learning_paths")
+            .select("topic_slugs")
+            .eq("session_id", session_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as e:
+        logger.warning(f"[feed] extend: failed to read path for session={session_id}: {e}")
+        return
+    if not path.data:
+        return
+    current_slugs: list[str] = path.data[0].get("topic_slugs") or []
+
+    try:
+        recs = await asyncio.to_thread(run_recommendations, session_id, current_slugs)
+    except Exception as e:
+        logger.warning(f"[feed] extend: recommendation_agent failed for session={session_id}: {e}")
+        return
+
+    new_rec = next((r for r in recs if r.slug not in current_slugs), None)
+    if not new_rec:
+        logger.info(f"[feed] extend: no novel recommendation for session={session_id}")
+        return
+
+    try:
+        db.table("learning_paths").update({
+            "topic_slugs": current_slugs + [new_rec.slug],
+        }).eq("session_id", session_id).execute()
+    except Exception as e:
+        logger.warning(f"[feed] extend: failed to append topic for session={session_id}: {e}")
+        return
+
+    logger.info(f"[feed] extended session={session_id} with topic='{new_rec.slug}' (rationale: {new_rec.rationale[:80]})")
+
+    # Sequential processor will cache-check internally — safe to call even if clips exist
+    await _process_topics_sequential([(new_rec.slug, new_rec.name)])
 
 
 def _parse_vector(v) -> list[float] | None:
@@ -340,7 +404,7 @@ def _fetch_clips_for_slug(
 # ---------------------------------------------------------------------------
 
 @router.get("/path/{session_id}", response_model=list[FeedResponse])
-async def get_path_feed(session_id: str, caller_id: str = Depends(require_user)):
+async def get_path_feed(session_id: str, background_tasks: BackgroundTasks, caller_id: str = Depends(require_user)):
     db = get_client()
     try:
         path = (
@@ -467,6 +531,12 @@ async def get_path_feed(session_id: str, caller_id: str = Depends(require_user))
                 seen_clip_ids.add(c.id)
                 unique.append(c)
         deduped_feeds.append(FeedResponse(topic_slug=f.topic_slug, clips=unique, processing=f.processing))
+
+    # Auto-extend the path when user is running low on unseen clips
+    total_unseen = sum(len(f.clips) for f in deduped_feeds)
+    if total_unseen < _LOW_CLIPS_THRESHOLD and _should_extend(session_id):
+        background_tasks.add_task(_extend_path, session_id)
+        logger.info(f"[feed] session={session_id} low on clips ({total_unseen}); queued path extension")
 
     return _interleave_topics(deduped_feeds)
 
