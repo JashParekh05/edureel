@@ -145,10 +145,6 @@ def _identify_segments(transcript: list[dict], topic_slug: str) -> list[dict]:
         {"start": s["start"], "end": s["start"] + s["duration"], "text": s["text"]}
         for s in transcript
     ]
-    # Cap at ~30 min of audio to stay safely within the Groq 128K context.
-    # Without this, ~5% of very long source videos would exceed the window.
-    capped_transcript = segments_with_times[:2000]
-    total_duration_s = int(capped_transcript[-1]["end"]) if capped_transcript else 0
 
     client = get_groq()
     prompt = f"""You are cutting an educational video about "{topic_slug}" into short reels optimized for viewer retention (TikTok-style).
@@ -160,10 +156,8 @@ CRITICAL RULE: Every segment MUST open with a hook — the very first words of t
 - A counterexample: "Here's where every textbook gets it wrong"
 Avoid segments that open with intros, transitions, or "In this section we will..."
 
-The video is {total_duration_s}s long. Distribute your selections across the full duration — don't cluster picks near the start.
-
 Here is the transcript with timestamps:
-{json.dumps(capped_transcript, indent=2)}
+{json.dumps(segments_with_times[:80], indent=2)}
 
 Identify 3-6 segments, each 45-90 seconds long, each covering one clear idea. Prefer cuts that start mid-thought at a moment of tension or revelation.
 
