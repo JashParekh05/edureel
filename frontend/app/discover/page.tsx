@@ -47,6 +47,12 @@ export default function DiscoverPage() {
   useEffect(() => {
     const prev = prevIndexRef.current;
     if (prev === activeIndex) return;
+    const leavingClip = clipsRef.current[prev];
+    if (leavingClip) {
+      const watchMs = Date.now() - clipStartRef.current;
+      const durationMs = (leavingClip.duration_seconds ?? 60) * 1000;
+      recordClipEvent(leavingClip.id, watchMs, watchMs >= durationMs * 0.8, null, 0, null, sessionTokenRef.current);
+    }
     prevIndexRef.current = activeIndex;
     clipStartRef.current = Date.now();
   }, [activeIndex]);
