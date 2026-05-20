@@ -51,7 +51,7 @@ export default function LoginPage() {
     <main className="min-h-screen bg-black text-white flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight">LearnReel</h1>
+          <h1 className="text-4xl font-bold tracking-tight">Curio</h1>
           <p className="text-zinc-400">{isSignUp ? "Create an account" : "Sign in to track your progress"}</p>
         </div>
 

@@ -3,7 +3,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata: Metadata = {
-  title: "LearnReel",
+  title: "Curio",
   description: "Educational short-form video, tailored to what you want to learn.",
 };
 
