@@ -9,12 +9,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/topics", tags=["topics"])
 
 
-async def _process_topic(topic_slug: str, topic_name: str) -> None:
+async def _process_topics_sequential(topics: list[tuple[str, str]]) -> None:
+    """Process topics one at a time. Keeps memory at one pipeline's worth (avoids OOM)."""
     from app.agents.pipeline_agent import run_pipeline
-    try:
-        await asyncio.to_thread(run_pipeline, topic_slug, topic_name)
-    except Exception as e:
-        logger.error(f"[topics] Background pipeline failed for topic={topic_slug}: {e}")
+    for slug, name in topics:
+        try:
+            await asyncio.to_thread(run_pipeline, slug, name)
+        except Exception as e:
+            logger.error(f"[topics] Background pipeline failed for topic={slug}: {e}")
 
 
 @router.post("/", response_model=LearningPath)
@@ -47,7 +49,9 @@ async def create_learning_path(req: TopicRequest, background_tasks: BackgroundTa
         logger.error(f"[topics] Failed to insert learning_path session={path.session_id}: {e}")
         # Don't block the user — path is still usable even if DB write fails
 
+    topics_to_process: list[tuple[str, str]] = []
     for topic in path.topics:
+        # Upsert topic row
         try:
             existing = (
                 db.table("topics")
@@ -67,8 +71,28 @@ async def create_learning_path(req: TopicRequest, background_tasks: BackgroundTa
         except Exception as e:
             logger.warning(f"[topics] Failed to upsert topic={topic.slug}: {e}")
 
-        background_tasks.add_task(_process_topic, topic.slug, topic.name)
-        logger.info(f"[topics] Queued pipeline for topic='{topic.slug}'")
+        # Only queue pipeline for topics that don't already have cached clips
+        try:
+            cached = (
+                db.table("clips")
+                .select("id")
+                .eq("topic_slug", topic.slug)
+                .limit(1)
+                .execute()
+            )
+            if cached.data:
+                logger.info(f"[topics] Cache hit for topic='{topic.slug}', skipping pipeline")
+            else:
+                topics_to_process.append((topic.slug, topic.name))
+        except Exception as e:
+            logger.warning(f"[topics] Cache check failed for {topic.slug}: {e}")
+            topics_to_process.append((topic.slug, topic.name))
+
+    if topics_to_process:
+        background_tasks.add_task(_process_topics_sequential, topics_to_process)
+        logger.info(f"[topics] Queued {len(topics_to_process)} new topics sequentially: {[t[0] for t in topics_to_process]}")
+    else:
+        logger.info("[topics] All path topics already cached, no pipeline work needed")
 
     return path
 
