@@ -1,4 +1,4 @@
-# LearnReel
+# Curio
 
 Educational short-form video reels, generated on-demand from your learning goals.
 
