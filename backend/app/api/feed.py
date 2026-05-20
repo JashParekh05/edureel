@@ -141,8 +141,24 @@ def _get_session_telemetry(db, session_id: str) -> tuple[set[str], dict[str, flo
     return seen_ids, topic_completion
 
 
-def _update_interest_vector(db, session_id: str, topic_slug: str, completed: bool, replay_count: int, feedback: str | None = None, clip_embedding: list[float] | None = None, user_id: str | None = None) -> None:
-    """Real-time interest vector + taste vector update after a clip event."""
+def _update_interest_vector(
+    db,
+    session_id: str,
+    topic_slug: str,
+    completed: bool,
+    replay_count: int,
+    feedback: str | None = None,
+    clip_embedding: list[float] | None = None,
+    user_id: str | None = None,
+    watch_ms: int = 0,
+    duration_seconds: int | None = None,
+) -> None:
+    """Real-time interest vector + taste vector update after a clip event.
+
+    Skip velocity matters: bailing in <10% of a clip is a much stronger 'no' than
+    watching most of it. Lets the algorithm tell 'topic is boring' from 'this
+    specific clip didn't quite land'.
+    """
     existing = (
         db.table("session_embeddings")
         .select("interest_vector, taste_vector")
@@ -158,8 +174,19 @@ def _update_interest_vector(db, session_id: str, topic_slug: str, completed: boo
         delta = 0.6
     elif feedback == "already_know":
         delta = -1.0
+    elif completed:
+        delta = 0.15 + replay_count * 0.3
     else:
-        delta = (0.15 if completed else -0.05) + replay_count * 0.3
+        # Tiered penalty based on how much the user watched
+        duration_s = max(1.0, float(duration_seconds or 60))
+        watch_ratio = (watch_ms or 0) / 1000.0 / duration_s
+        if watch_ratio < 0.1:        # bailed almost instantly
+            base = -0.30
+        elif watch_ratio < 0.4:      # casual skip
+            base = -0.10
+        else:                        # watched most of it
+            base = -0.02
+        delta = base + replay_count * 0.3
 
     current = float(vector.get(topic_slug, 0.0))
     vector[topic_slug] = round(max(-1.0, min(1.0, current + delta)), 3)
@@ -750,7 +777,7 @@ async def record_clip_event(clip_id: str, event: ClipEvent, caller_id: str = Dep
 
     if event.session_id:
         try:
-            clip = db.table("clips").select("topic_slug, embedding").eq("id", clip_id).limit(1).execute()
+            clip = db.table("clips").select("topic_slug, embedding, duration_seconds").eq("id", clip_id).limit(1).execute()
         except Exception as e:
             logger.warning(f"[feed] Failed to fetch clip {clip_id} for event: {e}")
             return
@@ -767,4 +794,6 @@ async def record_clip_event(clip_id: str, event: ClipEvent, caller_id: str = Dep
                 event.completed, event.replay_count, event.feedback,
                 clip_embedding=raw_emb,
                 user_id=user_id,
+                watch_ms=event.watch_ms,
+                duration_seconds=clip.data[0].get("duration_seconds"),
             )
