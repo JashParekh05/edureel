@@ -94,24 +94,32 @@ def _node_find_candidates(state: RecommendationState) -> dict:
                 seen_candidate_slugs.add(t["slug"])
                 candidates.append({**t, "source": "prerequisite_graph"})
 
-    # 2. Fallback: any topics not in current path with clips
+    # 2. Fallback: topics not in current path, ordered by clip volume descending
     if not candidates:
         fallback = (
             db.table("topics")
             .select("slug,name,difficulty")
             .not_.in_("slug", path_slugs)
-            .limit(10)
+            .limit(20)
             .execute()
         )
+        fallback_with_counts = []
         for t in fallback.data:
             if t["slug"] not in seen_candidate_slugs:
-                seen_candidate_slugs.add(t["slug"])
-                candidates.append({**t, "source": "fallback"})
+                count_res = db.table("clips").select("id", count="exact").eq("topic_slug", t["slug"]).execute()
+                clip_count = count_res.count or 0
+                if clip_count > 0:
+                    seen_candidate_slugs.add(t["slug"])
+                    fallback_with_counts.append({**t, "source": "fallback", "clip_count": clip_count})
+        # Sort by clip count so well-stocked topics rank first
+        fallback_with_counts.sort(key=lambda x: x["clip_count"], reverse=True)
+        candidates.extend(fallback_with_counts[:10])
 
-    # Attach clip counts
+    # Attach clip counts (skip if already set by fallback path)
     for c in candidates:
-        count_res = db.table("clips").select("id", count="exact").eq("topic_slug", c["slug"]).execute()
-        c["clip_count"] = count_res.count or 0
+        if "clip_count" not in c:
+            count_res = db.table("clips").select("id", count="exact").eq("topic_slug", c["slug"]).execute()
+            c["clip_count"] = count_res.count or 0
 
     logger.info(f"[rec_agent] candidates: {[c['slug'] for c in candidates]}")
     return {"candidates": candidates}

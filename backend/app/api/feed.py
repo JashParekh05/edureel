@@ -567,9 +567,11 @@ async def get_path_feed(session_id: str, background_tasks: BackgroundTasks, call
                 unique.append(c)
         deduped_feeds.append(FeedResponse(topic_slug=f.topic_slug, clips=unique, processing=f.processing))
 
-    # Auto-extend the path when user is running low on unseen clips
+    # Auto-extend the path when user is running low on unseen clips.
+    # Skip if any topic is still processing — pipelines may still deliver clips.
     total_unseen = sum(len(f.clips) for f in deduped_feeds)
-    if total_unseen < _LOW_CLIPS_THRESHOLD and _should_extend(session_id):
+    still_processing = any(f.processing for f in deduped_feeds)
+    if total_unseen < _LOW_CLIPS_THRESHOLD and not still_processing and _should_extend(session_id):
         background_tasks.add_task(_extend_path, session_id)
         logger.info(f"[feed] session={session_id} low on clips ({total_unseen}); queued path extension")
 
