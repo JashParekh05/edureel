@@ -16,7 +16,7 @@ app = FastAPI(title="LearnReel API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"http://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+):\d+",
-    allow_origins=["https://your-domain.vercel.app"],
+    allow_origins=["https://curio-eta.vercel.app"],
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,
