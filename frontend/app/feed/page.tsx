@@ -136,6 +136,8 @@ function FeedContent() {
     if (processing) {
       setTimedOut(false);
       pollingRef.current = setInterval(loadFeed, POLL_INTERVAL_MS);
+      // Timer resets whenever new clips arrive (clips.length in deps below),
+      // so back-end auto-extend keeps the feed alive past the initial 30s.
       const timeout = setTimeout(() => {
         clearInterval(pollingRef.current);
         // Only show timeout screen if we still have no clips — if clips exist,
@@ -146,7 +148,7 @@ function FeedContent() {
       return () => { clearInterval(pollingRef.current); clearTimeout(timeout); };
     }
     return () => clearInterval(pollingRef.current);
-  }, [processing, loadFeed]);
+  }, [processing, clips.length, loadFeed]);
 
   // Keep refs in sync so goTo/listeners never close over stale values
   activeIndexRef.current = activeIndex;
