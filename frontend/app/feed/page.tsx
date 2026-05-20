@@ -138,7 +138,9 @@ function FeedContent() {
       pollingRef.current = setInterval(loadFeed, POLL_INTERVAL_MS);
       const timeout = setTimeout(() => {
         clearInterval(pollingRef.current);
-        setTimedOut(true);
+        // Only show timeout screen if we still have no clips — if clips exist,
+        // stop polling silently (user already has content to watch)
+        if (clipsRef.current.length === 0) setTimedOut(true);
         setProcessing(false);
       }, 30000);
       return () => { clearInterval(pollingRef.current); clearTimeout(timeout); };

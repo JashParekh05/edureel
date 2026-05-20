@@ -74,6 +74,14 @@ async def _extend_path(session_id: str) -> None:
 
     logger.info(f"[feed] extended session={session_id} with topic='{new_rec.slug}' (rationale: {new_rec.rationale[:80]})")
 
+    # Ensure topics row exists before pipeline runs (pipeline clips FK to topics table)
+    try:
+        existing = db.table("topics").select("slug").eq("slug", new_rec.slug).execute()
+        if not existing.data:
+            db.table("topics").insert({"slug": new_rec.slug, "name": new_rec.name}).execute()
+    except Exception as e:
+        logger.warning(f"[feed] extend: failed to upsert topic row for slug={new_rec.slug}: {e}")
+
     # Sequential processor will cache-check internally — safe to call even if clips exist
     await _process_topics_sequential([(new_rec.slug, new_rec.name)])
 
