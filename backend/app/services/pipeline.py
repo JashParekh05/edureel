@@ -159,7 +159,7 @@ Avoid segments that open with intros, transitions, or "In this section we will..
 Here is the transcript with timestamps:
 {json.dumps(segments_with_times[:80], indent=2)}
 
-Identify 3-6 segments, each 45-90 seconds long, each covering one clear idea. Prefer cuts that start mid-thought at a moment of tension or revelation.
+Identify ONLY 2-3 segments — the single most hook-worthy moments. Each 45-90 seconds long, each covering one clear idea. Prefer cuts that start mid-thought at a moment of tension or revelation. More can be generated later if users engage; quality over quantity.
 
 For each segment, score its hook quality: 1.0 = irresistible opening, 0.5 = adequate, 0.0 = boring intro.
 Write the title as a curiosity-gap phrase (max 8 words) — something that makes the viewer NEED to know more.

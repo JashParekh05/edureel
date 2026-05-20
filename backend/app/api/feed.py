@@ -16,8 +16,8 @@ router = APIRouter(prefix="/api/feed", tags=["feed"])
 
 # In-memory throttle for path auto-extension. Prevents 4s-poll storm from queuing
 # multiple extensions per session. Best-effort only — fine if it drops on restart.
-_LOW_CLIPS_THRESHOLD = 5            # extend when unseen clips fall below this
-_EXTEND_COOLDOWN_S = 60             # don't re-extend a session within this window
+_LOW_CLIPS_THRESHOLD = 3            # extend when unseen clips fall below this
+_EXTEND_COOLDOWN_S = 20             # don't re-extend a session within this window
 _extending_sessions: dict[str, float] = {}
 
 
@@ -376,7 +376,7 @@ def _fetch_clips_for_slug(
     db,
     slug: str,
     seen_ids: set[str] | None = None,
-    limit: int = 20,
+    limit: int = 3,
     user_avg_watch_seconds: float | None = None,
     interest_vector: dict[str, float] | None = None,
     taste_vector: list[float] | None = None,

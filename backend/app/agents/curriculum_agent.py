@@ -104,8 +104,8 @@ The learner's goal: {intent.get('goal', state['query'])}
 Their level: {intent.get('level', 'beginner')}
 Domain: {intent.get('domain', 'general')}
 
-Return ONLY 2-3 initial topics — the platform will extend the path automatically based on what the learner engages with.
-Pick the most foundational + immediately relevant topics for this query. Don't try to cover the whole subject area upfront.
+Return ONLY 1-2 initial topics — the platform extends the path automatically based on what the learner engages with.
+Pick the single most foundational + immediately relevant topic(s) for this query. Don't try to cover the subject area upfront — the algorithm handles that as signals come in.
 
 Order topics from foundational to advanced (prerequisites first).
 A library of pre-built topics exists. Only reuse a slug if the topic is EXACTLY the same concept.
