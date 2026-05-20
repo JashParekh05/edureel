@@ -10,7 +10,7 @@ from app.models.schemas import Topic, LearningPath
 
 logger = logging.getLogger(__name__)
 
-MODEL = "llama-3.3-70b-versatile"
+MODEL = "gpt-4o-mini"
 
 
 class CurriculumState(TypedDict):
@@ -26,8 +26,8 @@ class CurriculumState(TypedDict):
 
 def _groq():
     import os
-    from groq import Groq
-    return Groq(api_key=os.environ["GROQ_API_KEY"])
+    from openai import OpenAI
+    return OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 
 def _node_understand_intent(state: CurriculumState) -> dict:

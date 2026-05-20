@@ -3,22 +3,22 @@ import json
 import uuid
 import logging
 from pathlib import Path
-from groq import Groq
+from openai import OpenAI
 from app.models.schemas import Topic, LearningPath
 
 logger = logging.getLogger(__name__)
 
-_client: Groq | None = None
+_client: OpenAI | None = None
 _curated_cache: list[dict] | None = None
 
-MODEL = "llama-3.3-70b-versatile"
+MODEL = "gpt-4o-mini"
 CURATED_PATH = Path(__file__).resolve().parent.parent.parent / "seed" / "curated_topics.json"
 
 
-def get_client() -> Groq:
+def get_client() -> OpenAI:
     global _client
     if _client is None:
-        _client = Groq(api_key=os.environ["GROQ_API_KEY"])
+        _client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     return _client
 
 
@@ -90,7 +90,7 @@ def parse_learning_path(query: str, session_id: str | None = None) -> LearningPa
             ],
         )
     except Exception as e:
-        logger.error(f"[LLM] Groq API call failed for query='{query[:80]}': {e}")
+        logger.error(f"[LLM] OpenAI API call failed for query='{query[:80]}': {e}")
         raise
 
     raw = response.choices[0].message.content

@@ -3,21 +3,21 @@ import re
 import json
 import logging
 import yt_dlp
-from groq import Groq
+from openai import OpenAI
 from app.services.embeddings import embed_texts
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 _groq_client = None
-MODEL = "llama-3.3-70b-versatile"
+MODEL = "gpt-4o-mini"
 COOKIES_PATH = os.getenv("YOUTUBE_COOKIES_PATH", "cookies.txt")
 
 
 def get_groq():
     global _groq_client
     if _groq_client is None:
-        _groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
+        _groq_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     return _groq_client
 
 

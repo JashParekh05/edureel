@@ -1,5 +1,5 @@
 {
-  "_comment": "Curated educational videos for instant clip serving. Hand-pick short (3-10 min) high-quality videos per topic. Run `python -m scripts.seed_clips` to process them.",
+  "_comment": "Curated educational videos for instant clip serving. Hand-pick short (3-10 min) high-quality videos per topic. Run `python -m scripts.seed_clips` to process them. Topics with empty videos[] need URLs filled in — see `_search_hint` for what to look for.",
   "topics": {
     "neural-networks-basics": {
       "name": "Neural Networks Basics",
@@ -184,6 +184,223 @@
       "videos": [
         "https://www.youtube.com/watch?v=g8VzCRUFAtI"
       ]
+    },
+
+    "convolutional-neural-networks": {
+      "name": "Convolutional Neural Networks",
+      "difficulty": "advanced",
+      "prerequisites": ["neural-networks-basics"],
+      "videos": [],
+      "_search_hint": "Try: 'CNN explained' from 3Blue1Brown, deeplizard, or StatQuest. 8-15 min ideal."
+    },
+    "recurrent-neural-networks": {
+      "name": "Recurrent Neural Networks",
+      "difficulty": "advanced",
+      "prerequisites": ["neural-networks-basics"],
+      "videos": [],
+      "_search_hint": "Try: 'RNN LSTM explained' from StatQuest or Andrej Karpathy."
+    },
+    "reinforcement-learning-basics": {
+      "name": "Reinforcement Learning Basics",
+      "difficulty": "intermediate",
+      "prerequisites": ["neural-networks-basics"],
+      "videos": [],
+      "_search_hint": "Try: 'reinforcement learning explained' from Two Minute Papers or DeepMind."
+    },
+    "embeddings-intuition": {
+      "name": "Vector Embeddings",
+      "difficulty": "intermediate",
+      "prerequisites": ["linear-algebra-vectors"],
+      "videos": [],
+      "_search_hint": "Try: 'word embeddings explained' from CodeEmporium or 3Blue1Brown."
+    },
+    "overfitting-regularization": {
+      "name": "Overfitting & Regularization",
+      "difficulty": "intermediate",
+      "prerequisites": ["neural-networks-basics"],
+      "videos": [],
+      "_search_hint": "Try: 'overfitting explained' from StatQuest. 6-10 min."
+    },
+    "loss-functions": {
+      "name": "Loss Functions",
+      "difficulty": "intermediate",
+      "prerequisites": ["neural-networks-basics"],
+      "videos": [],
+      "_search_hint": "Try: 'cross entropy loss' or 'MSE loss' from StatQuest."
+    },
+    "large-language-models": {
+      "name": "How LLMs Work",
+      "difficulty": "intermediate",
+      "prerequisites": ["transformers-attention"],
+      "videos": [],
+      "_search_hint": "Try: 'how GPT works' from 3Blue1Brown or Computerphile."
+    },
+
+    "probability-basics": {
+      "name": "Probability Basics",
+      "difficulty": "beginner",
+      "prerequisites": [],
+      "videos": [],
+      "_search_hint": "Try: 'probability for beginners' from Khan Academy or 3Blue1Brown."
+    },
+    "statistics-fundamentals": {
+      "name": "Statistics Fundamentals",
+      "difficulty": "beginner",
+      "prerequisites": ["probability-basics"],
+      "videos": [],
+      "_search_hint": "Try: 'statistics for beginners' from StatQuest. 10-15 min playlist starters."
+    },
+    "eigenvalues-eigenvectors": {
+      "name": "Eigenvalues & Eigenvectors",
+      "difficulty": "advanced",
+      "prerequisites": ["linear-algebra-matrices"],
+      "videos": [],
+      "_search_hint": "3Blue1Brown 'Essence of Linear Algebra' chapter 14."
+    },
+    "integrals-intro": {
+      "name": "Integrals: Intuition",
+      "difficulty": "intermediate",
+      "prerequisites": ["calculus-derivatives"],
+      "videos": [],
+      "_search_hint": "3Blue1Brown 'Essence of Calculus' integrals chapter."
+    },
+
+    "recursion": {
+      "name": "Recursion",
+      "difficulty": "beginner",
+      "prerequisites": [],
+      "videos": [],
+      "_search_hint": "Try: 'recursion explained' from Computerphile or HackerRank. 5-10 min."
+    },
+    "linked-lists": {
+      "name": "Linked Lists",
+      "difficulty": "beginner",
+      "prerequisites": [],
+      "videos": [],
+      "_search_hint": "Try: 'linked list data structure' from mycodeschool or HackerRank."
+    },
+    "sorting-algorithms": {
+      "name": "Sorting Algorithms",
+      "difficulty": "beginner",
+      "prerequisites": ["big-o-notation"],
+      "videos": [],
+      "_search_hint": "Try: 'quicksort vs mergesort visualized' from Computerphile."
+    },
+    "heaps-priority-queues": {
+      "name": "Heaps & Priority Queues",
+      "difficulty": "intermediate",
+      "prerequisites": ["binary-trees"],
+      "videos": [],
+      "_search_hint": "Try: 'min heap explained' from HackerRank or mycodeschool."
+    },
+    "oop-basics": {
+      "name": "OOP Basics",
+      "difficulty": "beginner",
+      "prerequisites": [],
+      "videos": [],
+      "_search_hint": "Try: 'object oriented programming explained' from Fireship or CS50."
+    },
+    "concurrency-threads": {
+      "name": "Concurrency & Threads",
+      "difficulty": "advanced",
+      "prerequisites": ["oop-basics"],
+      "videos": [],
+      "_search_hint": "Try: 'threads vs processes' from Computerphile."
+    },
+    "system-design-basics": {
+      "name": "System Design Basics",
+      "difficulty": "intermediate",
+      "prerequisites": ["rest-apis"],
+      "videos": [],
+      "_search_hint": "Try: 'system design interview' from Gaurav Sen or ByteByteGo. 10-15 min."
+    },
+
+    "http-basics": {
+      "name": "HTTP & The Web",
+      "difficulty": "beginner",
+      "prerequisites": [],
+      "videos": [],
+      "_search_hint": "Try: 'how HTTP works' from Fireship or Computerphile. <10 min."
+    },
+    "tcp-ip-explained": {
+      "name": "TCP/IP",
+      "difficulty": "intermediate",
+      "prerequisites": ["http-basics"],
+      "videos": [],
+      "_search_hint": "Try: 'how the internet works TCP' from Computerphile."
+    },
+    "docker-basics": {
+      "name": "Docker Basics",
+      "difficulty": "intermediate",
+      "prerequisites": [],
+      "videos": [],
+      "_search_hint": "Try: 'docker in 100 seconds' from Fireship, then a 10-min deep dive."
+    },
+    "oauth-explained": {
+      "name": "OAuth Explained",
+      "difficulty": "intermediate",
+      "prerequisites": ["http-basics"],
+      "videos": [],
+      "_search_hint": "Try: 'OAuth 2.0 explained' from OktaDev or Fireship."
+    },
+
+    "how-cpus-work": {
+      "name": "How CPUs Work",
+      "difficulty": "intermediate",
+      "prerequisites": [],
+      "videos": [],
+      "_search_hint": "Try: 'how a CPU works' from Branch Education or Computerphile. 10-20 min."
+    },
+    "memory-management": {
+      "name": "Memory Management",
+      "difficulty": "advanced",
+      "prerequisites": ["how-cpus-work"],
+      "videos": [],
+      "_search_hint": "Try: 'stack vs heap memory' from Computerphile or LowLevelLearning."
+    },
+
+    "evolution-natural-selection": {
+      "name": "Evolution by Natural Selection",
+      "difficulty": "beginner",
+      "prerequisites": [],
+      "videos": [],
+      "_search_hint": "Try: 'natural selection explained' from CrashCourse or Kurzgesagt."
+    },
+    "photosynthesis": {
+      "name": "Photosynthesis",
+      "difficulty": "beginner",
+      "prerequisites": [],
+      "videos": [],
+      "_search_hint": "Try: 'photosynthesis explained' from Khan Academy or CrashCourse Biology."
+    },
+    "newtons-laws": {
+      "name": "Newton's Laws of Motion",
+      "difficulty": "beginner",
+      "prerequisites": [],
+      "videos": [],
+      "_search_hint": "Try: 'Newton's three laws' from CrashCourse Physics or Khan Academy."
+    },
+    "wave-particle-duality": {
+      "name": "Wave–Particle Duality",
+      "difficulty": "advanced",
+      "prerequisites": [],
+      "videos": [],
+      "_search_hint": "Try: 'double slit experiment' from Veritasium or PBS Space Time."
+    },
+
+    "game-theory-basics": {
+      "name": "Game Theory Basics",
+      "difficulty": "intermediate",
+      "prerequisites": [],
+      "videos": [],
+      "_search_hint": "Try: 'prisoner's dilemma' from Veritasium or TED-Ed. 5-10 min."
+    },
+    "opportunity-cost": {
+      "name": "Opportunity Cost",
+      "difficulty": "beginner",
+      "prerequisites": [],
+      "videos": [],
+      "_search_hint": "Try: 'opportunity cost explained' from Marginal Revolution U or Khan Academy."
     }
   }
 }

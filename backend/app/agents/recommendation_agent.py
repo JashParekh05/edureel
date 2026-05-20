@@ -9,7 +9,7 @@ from app.models.schemas import TopicRecommendation
 
 logger = logging.getLogger(__name__)
 
-MODEL = "llama-3.3-70b-versatile"
+MODEL = "gpt-4o-mini"
 
 
 class RecommendationState(TypedDict):
@@ -142,8 +142,8 @@ def _node_score_and_rank(state: RecommendationState) -> dict:
 
     # Use Groq to rank
     import os
-    from groq import Groq
-    client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    from openai import OpenAI
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
     context = {
         "current_topics": state["path_slugs"],

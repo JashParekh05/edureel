@@ -278,6 +278,28 @@ def _interleave_topics(feeds: list[FeedResponse]) -> list[FeedResponse]:
 # Clip fetching
 # ---------------------------------------------------------------------------
 
+def _spread_by_source(clips: list[Clip]) -> list[Clip]:
+    """Reorder so consecutive clips don't share the same source video.
+    Round-robins one clip per source_url until exhausted. Preserves relative
+    score order within each source group."""
+    if len(clips) <= 1:
+        return clips
+    by_source: dict[str, list[Clip]] = {}
+    order: list[str] = []
+    for c in clips:
+        key = c.source_url or c.id
+        if key not in by_source:
+            by_source[key] = []
+            order.append(key)
+        by_source[key].append(c)
+    result: list[Clip] = []
+    while any(by_source[k] for k in order):
+        for k in order:
+            if by_source[k]:
+                result.append(by_source[k].pop(0))
+    return result
+
+
 def _fetch_clips_for_slug(
     db,
     slug: str,
@@ -309,7 +331,8 @@ def _fetch_clips_for_slug(
     clip_ids = [c.id for c in clips]
     pop_stats = _get_clip_population_stats(db, clip_ids)
     clips = _compute_scores(clips, pop_stats, user_avg_watch_seconds, interest_vector, taste_vector)
-    return sorted(clips, key=lambda c: c.final_score or c.hook_score, reverse=True)
+    sorted_clips = sorted(clips, key=lambda c: c.final_score or c.hook_score, reverse=True)
+    return _spread_by_source(sorted_clips)
 
 
 # ---------------------------------------------------------------------------
@@ -434,7 +457,18 @@ async def get_path_feed(session_id: str, caller_id: str = Depends(require_user))
     # Bubble "want more" topics (high interest) to the front
     feeds.sort(key=lambda f: interest_vector.get(f.topic_slug, 0.0), reverse=True)
 
-    return _interleave_topics(feeds)
+    # Cross-topic dedupe: same clip shouldn't appear under multiple topic feeds
+    seen_clip_ids: set[str] = set()
+    deduped_feeds: list[FeedResponse] = []
+    for f in feeds:
+        unique: list[Clip] = []
+        for c in f.clips:
+            if c.id not in seen_clip_ids:
+                seen_clip_ids.add(c.id)
+                unique.append(c)
+        deduped_feeds.append(FeedResponse(topic_slug=f.topic_slug, clips=unique, processing=f.processing))
+
+    return _interleave_topics(deduped_feeds)
 
 
 @router.get("/recommendations/{session_id}", response_model=list[TopicRecommendation])
@@ -579,7 +613,7 @@ def _fetch_discover_clips(
     pop_stats = _get_clip_population_stats(db, clip_ids)
     clips = _compute_scores(clips, pop_stats, None, interest_vector=interest_vector, taste_vector=taste_vector)
     random.shuffle(clips)
-    return clips[:limit]
+    return _spread_by_source(clips[:limit])
 
 
 @router.get("/discover/{user_id}", response_model=list[Clip])
