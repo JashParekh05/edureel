@@ -94,6 +94,7 @@ def _node_transcribe(state: PipelineState) -> dict:
 
 def _node_segment(state: PipelineState) -> dict:
     from app.services.pipeline import _identify_segments
+    from app.services.embeddings import embed_texts
     topic_slug = state["topic_slug"]
     clips = []
 
@@ -129,6 +130,12 @@ def _node_segment(state: PipelineState) -> dict:
                 clips.append(base)
         else:
             clips.append(base)
+
+    texts = [c.get("transcript") or c.get("title", "") for c in clips]
+    embeddings = embed_texts(texts)
+    for clip, emb in zip(clips, embeddings):
+        if emb is not None:
+            clip["embedding"] = emb
 
     logger.info(f"[pipeline_agent] {len(clips)} clips after segmentation for {topic_slug}")
     return {"clips": clips}

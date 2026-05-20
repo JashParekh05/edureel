@@ -124,9 +124,11 @@ function FeedContent() {
     if (clips.length > target) {
       initialScrollDoneRef.current = true;
       requestAnimationFrame(() => {
-        const el = containerRef.current?.querySelectorAll("[data-index]")[target] as HTMLElement;
-        el?.scrollIntoView({ behavior: "instant" });
-        setActiveIndex(target);
+        requestAnimationFrame(() => {
+          const el = containerRef.current?.querySelectorAll("[data-index]")[target] as HTMLElement;
+          el?.scrollIntoView({ behavior: "instant" });
+          setActiveIndex(target);
+        });
       });
     }
   }, [clips.length]);

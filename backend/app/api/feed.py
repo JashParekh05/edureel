@@ -127,10 +127,11 @@ def _update_interest_vector(db, session_id: str, topic_slug: str, completed: boo
 
         if new_taste is not None:
             try:
-                u_row = db.table("user_profiles").select("taste_vector").eq("user_id", user_id).limit(1).execute()
-                u_taste = _parse_vector((u_row.data[0] if u_row.data else {}).get("taste_vector"))
-                merged_taste = ema_update(u_taste, new_taste, alpha=0.1) if u_taste and len(u_taste) == len(new_taste) else new_taste
-                db.table("user_profiles").upsert({"user_id": user_id, "taste_vector": merged_taste}).execute()
+                db.rpc("merge_user_taste", {
+                    "p_user_id": user_id,
+                    "p_new_taste": new_taste,
+                    "p_alpha": 0.1,
+                }).execute()
             except Exception as e:
                 logger.warning(f"Failed to update taste_vector for {user_id}: {e}")
 
@@ -491,6 +492,18 @@ async def get_feed(
     return FeedResponse(topic_slug=topic_slug, clips=clips, processing=len(clips) == 0)
 
 
+_slug_emb_cache: tuple[tuple[str, ...], list[list[float] | None]] = ((), [])
+
+
+def _cached_slug_embeddings(slugs: list[str]) -> list[list[float] | None]:
+    global _slug_emb_cache
+    from app.services.embeddings import embed_texts
+    key = tuple(slugs)
+    if _slug_emb_cache[0] != key:
+        _slug_emb_cache = (key, embed_texts([s.replace("-", " ") for s in slugs]))
+    return _slug_emb_cache[1]
+
+
 def _match_interest_slugs(interests: list[str], all_slugs: list[str], taste_vector: list[float] | None = None) -> list[str]:
     """Return topic slugs relevant to the user's interests.
 
@@ -502,9 +515,8 @@ def _match_interest_slugs(interests: list[str], all_slugs: list[str], taste_vect
 
     # Semantic path: embed each slug and rank by cosine similarity to taste
     if taste_vector is not None:
-        from app.services.embeddings import embed_texts, cosine_similarity
-        slug_texts = [s.replace("-", " ") for s in all_slugs]
-        slug_embeddings = embed_texts(slug_texts)
+        from app.services.embeddings import cosine_similarity
+        slug_embeddings = _cached_slug_embeddings(all_slugs)
         scored = []
         for slug, emb in zip(all_slugs, slug_embeddings):
             if emb is not None:

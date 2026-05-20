@@ -19,6 +19,7 @@ app.add_middleware(
     allow_origins=["https://your-domain.vercel.app"],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
 
 app.include_router(topics.router)

@@ -1,5 +1,5 @@
 import json
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Literal
 
 
@@ -34,7 +34,7 @@ class Clip(BaseModel):
     hook_score: float = 0.5
     final_score: float | None = None
     created_at: str | None = None
-    embedding: list[float] | None = None
+    embedding: list[float] | None = Field(default=None, exclude=True)
 
     @field_validator("embedding", mode="before")
     @classmethod
