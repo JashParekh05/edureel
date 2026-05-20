@@ -29,14 +29,13 @@ function FeedContent() {
   const containerRef = useRef<HTMLDivElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const activeIndexRef = useRef(0);
+  const clipsRef = useRef<Clip[]>([]);
+  const sessionIdRef = useRef(sessionId);
+  const sessionTokenRef = useRef(session?.access_token ?? "");
   const clipStartRef = useRef<number>(Date.now());
   const clipVisitsRef = useRef<Record<string, number>>({});
   const seenClipIdsRef = useRef<Set<string>>(new Set());
   const fetchingMoreRef = useRef(false);
-
-  // Touch swipe state
-  const touchStartY = useRef<number | null>(null);
-
   const loadFeed = useCallback(async () => {
     try {
       if (sessionId) {
@@ -147,66 +146,57 @@ function FeedContent() {
     return () => clearInterval(pollingRef.current);
   }, [processing, loadFeed]);
 
+  // Keep refs in sync so goTo/listeners never close over stale values
   activeIndexRef.current = activeIndex;
+  clipsRef.current = clips;
+  sessionIdRef.current = sessionId;
+  sessionTokenRef.current = session?.access_token ?? "";
 
   const goTo = useCallback((idx: number) => {
-    const clamped = Math.max(0, Math.min(clips.length - 1, idx));
-    if (clamped === activeIndexRef.current && idx >= 0 && idx < clips.length) return;
+    const clamped = Math.max(0, Math.min(clipsRef.current.length - 1, idx));
+    const el = containerRef.current?.querySelectorAll("[data-index]")[clamped] as HTMLElement;
+    el?.scrollIntoView({ behavior: "instant" });
+  }, []);
 
-    const leavingClip = clips[activeIndexRef.current];
+  // Single source of truth for telemetry — fires on every activeIndex change regardless of input method
+  const prevIndexRef = useRef(activeIndex);
+  useEffect(() => {
+    const prev = prevIndexRef.current;
+    if (prev === activeIndex) return;
+    const leavingClip = clipsRef.current[prev];
     if (leavingClip) {
       const watchMs = Date.now() - clipStartRef.current;
       const durationMs = (leavingClip.duration_seconds ?? 60) * 1000;
       const visits = clipVisitsRef.current[leavingClip.id] ?? 1;
-      recordClipEvent(leavingClip.id, watchMs, watchMs >= durationMs * 0.8, sessionId, Math.max(0, visits - 1), null, session?.access_token ?? "");
+      recordClipEvent(leavingClip.id, watchMs, watchMs >= durationMs * 0.8, sessionIdRef.current, Math.max(0, visits - 1), null, sessionTokenRef.current);
     }
-
+    prevIndexRef.current = activeIndex;
     clipStartRef.current = Date.now();
-    const arrivingClip = clips[clamped];
-    if (arrivingClip) {
-      clipVisitsRef.current[arrivingClip.id] = (clipVisitsRef.current[arrivingClip.id] ?? 0) + 1;
-    }
-    const el = containerRef.current?.querySelectorAll("[data-index]")[clamped] as HTMLElement;
-    el?.scrollIntoView({ behavior: "smooth" });
-    setActiveIndex(clamped);
-  }, [clips, sessionId]);
+    const arrivingClip = clipsRef.current[activeIndex];
+    if (arrivingClip) clipVisitsRef.current[arrivingClip.id] = (clipVisitsRef.current[arrivingClip.id] ?? 0) + 1;
+  }, [activeIndex]);
 
-  // Wheel navigation (captures scroll events eaten by YouTube iframes)
+  // IntersectionObserver keeps activeIndex honest when CSS snap takes over
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      goTo(activeIndexRef.current + (e.deltaY > 0 ? 1 : -1));
-    };
-    container.addEventListener("wheel", handleWheel, { passive: false });
-    return () => container.removeEventListener("wheel", handleWheel);
-  }, [goTo]);
-
-  // Touch swipe navigation
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleTouchStart = (e: TouchEvent) => {
-      touchStartY.current = e.touches[0].clientY;
-    };
-    const handleTouchEnd = (e: TouchEvent) => {
-      if (touchStartY.current === null) return;
-      const delta = touchStartY.current - e.changedTouches[0].clientY;
-      if (Math.abs(delta) > 40) {
-        goTo(activeIndexRef.current + (delta > 0 ? 1 : -1));
-      }
-      touchStartY.current = null;
-    };
-
-    container.addEventListener("touchstart", handleTouchStart, { passive: true });
-    container.addEventListener("touchend", handleTouchEnd, { passive: true });
-    return () => {
-      container.removeEventListener("touchstart", handleTouchStart);
-      container.removeEventListener("touchend", handleTouchEnd);
-    };
-  }, [goTo]);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+            const idx = parseInt((entry.target as HTMLElement).dataset.index ?? "-1");
+            if (idx >= 0 && idx !== activeIndexRef.current) setActiveIndex(idx);
+          }
+        }
+      },
+      { root: container, threshold: 0.6 }
+    );
+    const items = container.querySelectorAll("[data-index]");
+    items.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  // Re-run when clip count changes so new clips get observed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clips.length]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -335,6 +325,26 @@ function FeedContent() {
         </span>
       </div>
 
+      {/* Nav arrows */}
+      {clips.length > 0 && (
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+          <button
+            onClick={() => goTo(activeIndex - 1)}
+            disabled={activeIndex === 0}
+            className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm border border-zinc-700 flex items-center justify-center text-white disabled:opacity-20 hover:bg-black/60 transition active:scale-95"
+          >
+            ▲
+          </button>
+          <button
+            onClick={() => goTo(activeIndex + 1)}
+            disabled={activeIndex >= clips.length}
+            className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm border border-zinc-700 flex items-center justify-center text-white disabled:opacity-20 hover:bg-black/60 transition active:scale-95"
+          >
+            ▼
+          </button>
+        </div>
+      )}
+
       {/* Progress bar */}
       {clips.length > 0 && (
         <div className="absolute top-0 inset-x-0 z-30 h-0.5 bg-zinc-800">
@@ -355,21 +365,23 @@ function FeedContent() {
           <div
             key={clip.id}
             data-index={i}
-            className="w-full snap-start snap-always relative"
+            className="w-full relative snap-start snap-always"
             style={{ height: "100dvh" }}
           >
-            <ReelPlayer
-              clip={clip}
-              active={i === activeIndex}
-              onEnded={() => goTo(i + 1)}
-              onFeedback={sessionId ? (type) => {
-                recordClipEvent(clip.id, Date.now() - clipStartRef.current, false, sessionId, 0, type, session?.access_token ?? "");
-                if (type === "already_know") {
-                  setClips((prev) => prev.filter((c) => c.id === clip.id || topicLabels[c.id] !== topicLabels[clip.id]));
-                  goTo(i + 1);
-                }
-              } : undefined}
-            />
+            {i === activeIndex ? (
+              <ReelPlayer
+                clip={clip}
+                active={true}
+                onEnded={() => goTo(i + 1)}
+                onFeedback={sessionId ? (type) => {
+                  recordClipEvent(clip.id, Date.now() - clipStartRef.current, false, sessionId, 0, type, session?.access_token ?? "");
+                  if (type === "already_know") {
+                    setClips((prev) => prev.filter((c) => c.id === clip.id || topicLabels[c.id] !== topicLabels[clip.id]));
+                    goTo(i + 1);
+                  }
+                } : undefined}
+              />
+            ) : null}
           </div>
         ))}
 

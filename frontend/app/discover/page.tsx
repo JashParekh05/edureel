@@ -16,7 +16,12 @@ export default function DiscoverPage() {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const activeIndexRef = useRef(0);
-  const touchStartY = useRef<number | null>(null);
+  const clipsRef = useRef<Clip[]>([]);
+  const sessionTokenRef = useRef(session?.access_token ?? "");
+
+  activeIndexRef.current = activeIndex;
+  clipsRef.current = clips;
+  sessionTokenRef.current = session?.access_token ?? "";
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -30,45 +35,31 @@ export default function DiscoverPage() {
     }).catch(() => setFetching(false));
   }, [user, session]);
 
-  activeIndexRef.current = activeIndex;
-
   const goTo = useCallback((idx: number) => {
-    if (!clips.length) return;
-    const clamped = Math.max(0, Math.min(clips.length - 1, idx));
-    if (clamped === activeIndexRef.current) return;
+    const clamped = Math.max(0, Math.min(clipsRef.current.length - 1, idx));
     const el = containerRef.current?.querySelectorAll("[data-index]")[clamped] as HTMLElement;
-    el?.scrollIntoView({ behavior: "smooth" });
-    setActiveIndex(clamped);
+    el?.scrollIntoView({ behavior: "instant" });
+  }, []);
+
+  // IntersectionObserver keeps activeIndex honest when CSS snap takes over
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+            const idx = parseInt((entry.target as HTMLElement).dataset.index ?? "-1");
+            if (idx >= 0 && idx !== activeIndexRef.current) setActiveIndex(idx);
+          }
+        }
+      },
+      { root: container, threshold: 0.6 }
+    );
+    container.querySelectorAll("[data-index]").forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clips.length]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      goTo(activeIndexRef.current + (e.deltaY > 0 ? 1 : -1));
-    };
-    container.addEventListener("wheel", handleWheel, { passive: false });
-    return () => container.removeEventListener("wheel", handleWheel);
-  }, [goTo]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const handleTouchStart = (e: TouchEvent) => { touchStartY.current = e.touches[0].clientY; };
-    const handleTouchEnd = (e: TouchEvent) => {
-      if (touchStartY.current === null) return;
-      const delta = touchStartY.current - e.changedTouches[0].clientY;
-      if (Math.abs(delta) > 40) goTo(activeIndexRef.current + (delta > 0 ? 1 : -1));
-      touchStartY.current = null;
-    };
-    container.addEventListener("touchstart", handleTouchStart, { passive: true });
-    container.addEventListener("touchend", handleTouchEnd, { passive: true });
-    return () => {
-      container.removeEventListener("touchstart", handleTouchStart);
-      container.removeEventListener("touchend", handleTouchEnd);
-    };
-  }, [goTo]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -124,6 +115,24 @@ export default function DiscoverPage() {
         </span>
       </div>
 
+      {/* Nav arrows */}
+      <div className="absolute left-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+        <button
+          onClick={() => goTo(activeIndex - 1)}
+          disabled={activeIndex === 0}
+          className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm border border-zinc-700 flex items-center justify-center text-white disabled:opacity-20 hover:bg-black/60 transition active:scale-95"
+        >
+          ▲
+        </button>
+        <button
+          onClick={() => goTo(activeIndex + 1)}
+          disabled={activeIndex >= clips.length}
+          className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm border border-zinc-700 flex items-center justify-center text-white disabled:opacity-20 hover:bg-black/60 transition active:scale-95"
+        >
+          ▼
+        </button>
+      </div>
+
       {/* Progress bar */}
       <div className="absolute top-0 inset-x-0 z-30 h-0.5 bg-zinc-800">
         <div
@@ -135,20 +144,22 @@ export default function DiscoverPage() {
       {/* Scroll container */}
       <div ref={containerRef} className="h-full overflow-y-scroll snap-y snap-mandatory" style={{ scrollbarWidth: "none" }}>
         {clips.map((clip, i) => (
-          <div key={clip.id} data-index={i} className="w-full snap-start snap-always relative" style={{ height: "100dvh" }}>
-            <ReelPlayer
-              clip={clip}
-              active={i === activeIndex}
-              onEnded={() => goTo(i + 1)}
-              onFeedback={(type) => recordClipEvent(clip.id, 0, false, null, 0, type, session?.access_token ?? "")}
-            />
+          <div key={clip.id} data-index={i} className="w-full relative snap-start snap-always" style={{ height: "100dvh" }}>
+            {i === activeIndex ? (
+              <ReelPlayer
+                clip={clip}
+                active={true}
+                onEnded={() => goTo(i + 1)}
+                onFeedback={(type) => recordClipEvent(clip.id, 0, false, null, 0, type, sessionTokenRef.current)}
+              />
+            ) : null}
           </div>
         ))}
 
         {/* End card */}
         <div className="snap-start snap-always" style={{ height: "100dvh" }}>
           <div className="h-full flex flex-col items-center justify-center gap-5 bg-black text-white px-6">
-            <p className="text-2xl font-semibold text-center">You're all caught up</p>
+            <p className="text-2xl font-semibold text-center">You&apos;re all caught up</p>
             <p className="text-zinc-500 text-sm text-center">Want to go deeper on something?</p>
             <button
               onClick={() => router.push("/")}
