@@ -41,11 +41,20 @@ export default function DiscoverPage() {
     el?.scrollIntoView({ behavior: "instant" });
   }, []);
 
-  // IntersectionObserver keeps activeIndex honest when CSS snap takes over
+  // Telemetry — fires on every activeIndex change regardless of input method
+  const prevIndexRef = useRef(activeIndex);
+  const clipStartRef = useRef<number>(Date.now());
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const observer = new IntersectionObserver(
+    const prev = prevIndexRef.current;
+    if (prev === activeIndex) return;
+    prevIndexRef.current = activeIndex;
+    clipStartRef.current = Date.now();
+  }, [activeIndex]);
+
+  // Stable IntersectionObserver — created once, re-observes new clips as count grows
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  useEffect(() => {
+    observerRef.current = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
@@ -54,11 +63,12 @@ export default function DiscoverPage() {
           }
         }
       },
-      { root: container, threshold: 0.6 }
+      { root: containerRef.current, threshold: 0.6 }
     );
-    container.querySelectorAll("[data-index]").forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => observerRef.current?.disconnect();
+  }, []);
+  useEffect(() => {
+    containerRef.current?.querySelectorAll("[data-index]").forEach((el) => observerRef.current?.observe(el));
   }, [clips.length]);
 
   useEffect(() => {

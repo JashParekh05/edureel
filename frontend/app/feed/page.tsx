@@ -176,11 +176,10 @@ function FeedContent() {
     if (arrivingClip) clipVisitsRef.current[arrivingClip.id] = (clipVisitsRef.current[arrivingClip.id] ?? 0) + 1;
   }, [activeIndex]);
 
-  // IntersectionObserver keeps activeIndex honest when CSS snap takes over
+  // Stable IntersectionObserver — created once, re-observes new clips as count grows
+  const observerRef = useRef<IntersectionObserver | null>(null);
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const observer = new IntersectionObserver(
+    observerRef.current = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
@@ -189,13 +188,12 @@ function FeedContent() {
           }
         }
       },
-      { root: container, threshold: 0.6 }
+      { root: containerRef.current, threshold: 0.6 }
     );
-    const items = container.querySelectorAll("[data-index]");
-    items.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  // Re-run when clip count changes so new clips get observed
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => observerRef.current?.disconnect();
+  }, []);
+  useEffect(() => {
+    containerRef.current?.querySelectorAll("[data-index]").forEach((el) => observerRef.current?.observe(el));
   }, [clips.length]);
 
   // Keyboard navigation
