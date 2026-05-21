@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { createLearningPath, getUserHistory, getUserProfile, type LearningPath, type LearningPathSummary } from "@/lib/api";
+import { createLearningPath, getUserHistory, getUserProfile, getTopicSections, type LearningPath, type LearningPathSummary, type TopicSection } from "@/lib/api";
 
 const SUGGESTIONS = [
   "I want to learn hashmaps and binary trees",
@@ -20,7 +20,9 @@ export default function Home() {
   const [path, setPath] = useState<LearningPath | null>(null);
   const [error, setError] = useState("");
   const [history, setHistory] = useState<LearningPathSummary[]>([]);
-  const [expandedSession, setExpandedSession] = useState<string | null>(null);
+  const [expandedTopic, setExpandedTopic] = useState<string | null>(null);
+  const [sectionsByTopic, setSectionsByTopic] = useState<Record<string, TopicSection[]>>({});
+  const [loadingSections, setLoadingSections] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -33,6 +35,22 @@ export default function Home() {
       if (!p.onboarding_complete) router.replace("/onboarding");
     }).catch(() => {});
   }, [user, session]);
+
+  async function toggleSections(slug: string) {
+    if (expandedTopic === slug) {
+      setExpandedTopic(null);
+      return;
+    }
+    setExpandedTopic(slug);
+    if (!sectionsByTopic[slug] && session) {
+      setLoadingSections(slug);
+      try {
+        const sections = await getTopicSections(slug, session.access_token);
+        setSectionsByTopic((prev) => ({ ...prev, [slug]: sections }));
+      } catch {}
+      setLoadingSections(null);
+    }
+  }
 
   async function handleSubmit(q: string) {
     const trimmed = q.trim();
@@ -159,18 +177,50 @@ export default function Home() {
               <p className="text-zinc-300 text-sm">{path.summary}</p>
               <div className="space-y-2">
                 {path.topics.map((topic, i) => (
-                  <button
-                    key={topic.slug}
-                    onClick={() => router.push(`/feed?session=${path.session_id}&start_topic=${topic.slug}`)}
-                    className="w-full flex items-center gap-3 text-left rounded-xl px-4 py-3 bg-zinc-800/50 border border-zinc-700/50 hover:bg-zinc-700/60 hover:border-zinc-600 active:scale-[0.98] transition cursor-pointer"
-                  >
-                    <span className="text-zinc-500 text-xs w-5 shrink-0">{i + 1}.</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-white text-sm">{topic.name}</p>
-                      <p className="text-zinc-500 text-xs capitalize mt-0.5">{topic.difficulty}</p>
+                  <div key={topic.slug} className="rounded-xl overflow-hidden border border-zinc-700/50">
+                    <div className="flex items-center gap-3 bg-zinc-800/50 hover:bg-zinc-700/60 hover:border-zinc-600 transition px-4 py-3">
+                      <span className="text-zinc-500 text-xs w-5 shrink-0">{i + 1}.</span>
+                      <button
+                        className="flex-1 min-w-0 text-left"
+                        onClick={() => router.push(`/feed?session=${path.session_id}&start_topic=${topic.slug}`)}
+                      >
+                        <p className="font-medium text-white text-sm">{topic.name}</p>
+                        <p className="text-zinc-500 text-xs capitalize mt-0.5">{topic.difficulty}</p>
+                      </button>
+                      <button
+                        onClick={() => toggleSections(topic.slug)}
+                        className="text-zinc-500 hover:text-white text-xs px-1.5 py-1 transition"
+                        aria-label="Show sections"
+                      >
+                        {expandedTopic === topic.slug ? "▲" : "▼"}
+                      </button>
                     </div>
-                    <span className="text-zinc-400 text-sm shrink-0">▶</span>
-                  </button>
+
+                    {expandedTopic === topic.slug && (
+                      <div className="bg-zinc-900/80 divide-y divide-zinc-800/60">
+                        {loadingSections === topic.slug ? (
+                          <div className="px-4 py-3 text-zinc-600 text-xs">Loading sections…</div>
+                        ) : sectionsByTopic[topic.slug]?.length > 0 ? (
+                          sectionsByTopic[topic.slug].map((sec) => (
+                            <button
+                              key={sec.section_index}
+                              onClick={() => router.push(`/feed?session=${path.session_id}&start_topic=${topic.slug}&start_section=${sec.section_index}`)}
+                              className="w-full flex items-center gap-3 text-left px-5 py-2.5 hover:bg-zinc-800/60 active:scale-[0.99] transition"
+                            >
+                              <span className="text-zinc-600 text-xs w-4 shrink-0">{sec.section_index + 1}</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-zinc-300 text-xs font-medium">{sec.title}</p>
+                                <p className="text-zinc-500 text-xs mt-0.5 line-clamp-1">{sec.description}</p>
+                              </div>
+                              <span className="text-zinc-600 text-xs shrink-0">▶</span>
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-5 py-3 text-zinc-600 text-xs">Sections not generated yet — watch a clip to trigger generation.</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>

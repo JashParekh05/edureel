@@ -120,6 +120,23 @@ async def create_learning_path(request: Request, req: TopicRequest, background_t
     return path
 
 
+@router.get("/{slug}/sections")
+async def get_topic_sections(slug: str, caller_id: str = Depends(require_user)):
+    db = get_client()
+    try:
+        rows = (
+            db.table("topic_sections")
+            .select("section_index,title,description,search_query")
+            .eq("topic_slug", slug)
+            .order("section_index")
+            .execute()
+        )
+    except Exception as e:
+        logger.error(f"[topics] Failed to fetch sections for {slug}: {e}")
+        return []
+    return rows.data
+
+
 @router.get("/history/{user_id}")
 async def get_user_history(user_id: str, caller_id: str = Depends(require_user)):
     if caller_id != user_id:

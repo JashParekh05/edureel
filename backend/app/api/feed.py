@@ -407,7 +407,7 @@ def _fetch_clips_for_slug(
     db,
     slug: str,
     seen_ids: set[str] | None = None,
-    limit: int = 3,
+    limit: int = 8,
     user_avg_watch_seconds: float | None = None,
     interest_vector: dict[str, float] | None = None,
     taste_vector: list[float] | None = None,
@@ -617,7 +617,7 @@ async def get_feed(
     try:
         result = (
             db.table("clips")
-            .select("id,topic_slug,title,description,video_url,thumbnail_url,duration_seconds,source_url,source_platform,hook_score,created_at")
+            .select("id,topic_slug,title,description,video_url,thumbnail_url,duration_seconds,source_url,source_platform,hook_score,created_at,section_index")
             .eq("topic_slug", topic_slug)
             .order("created_at", desc=False)
             .range(offset, offset + limit - 1)

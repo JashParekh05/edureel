@@ -30,6 +30,14 @@ export interface Clip {
   source_platform: string | null;
   hook_score: number;
   final_score: number | null;
+  section_index: number | null;
+}
+
+export interface TopicSection {
+  section_index: number;
+  title: string;
+  description: string;
+  search_query: string;
 }
 
 export interface FeedResponse {
@@ -62,6 +70,14 @@ export interface LearningPathSummary {
   topic_slugs: string[];
   topic_count: number;
   created_at: string;
+}
+
+export async function getTopicSections(slug: string, token: string): Promise<TopicSection[]> {
+  const res = await fetch(`${API_BASE}/api/topics/${encodeURIComponent(slug)}/sections`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return [];
+  return res.json();
 }
 
 export async function getUserHistory(userId: string, token: string): Promise<LearningPathSummary[]> {

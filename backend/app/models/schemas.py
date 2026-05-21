@@ -34,6 +34,7 @@ class Clip(BaseModel):
     hook_score: float = 0.5
     final_score: float | None = None
     created_at: str | None = None
+    section_index: int | None = None
     embedding: list[float] | None = Field(default=None, exclude=True)
 
     @field_validator("embedding", mode="before")

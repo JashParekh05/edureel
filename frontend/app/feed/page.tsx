@@ -16,6 +16,7 @@ function FeedContent() {
   const topicSlug = params.get("topic");
 
   const startTopicSlug = params.get("start_topic") ?? null;
+  const startSection = params.get("start_section") !== null ? parseInt(params.get("start_section")!) : null;
   const startIndex = Math.max(0, parseInt(params.get("start") ?? "0") || 0);
 
   const [clips, setClips] = useState<Clip[]>([]);
@@ -47,8 +48,12 @@ function FeedContent() {
         });
         allClips.forEach((c) => seenClipIdsRef.current.add(c.id));
         if (startTopicSlug) {
-          const idx = allClips.findIndex((c) => labels[c.id] === startTopicSlug);
-          if (idx >= 0) resolvedStartRef.current = idx;
+          const sectionIdx = startSection !== null
+            ? allClips.findIndex((c) => labels[c.id] === startTopicSlug && c.section_index === startSection)
+            : -1;
+          const topicIdx = allClips.findIndex((c) => labels[c.id] === startTopicSlug);
+          const resolved = sectionIdx >= 0 ? sectionIdx : topicIdx;
+          if (resolved >= 0) resolvedStartRef.current = resolved;
         }
         setClips((prev) => {
           if (prev.length === 0) return allClips;
