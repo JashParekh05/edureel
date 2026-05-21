@@ -19,6 +19,7 @@ export default function DiscoverPage() {
   const clipsRef = useRef<Clip[]>([]);
   const sessionTokenRef = useRef(session?.access_token ?? "");
   const fetchingMoreRef = useRef(false);
+  const seenClipIdsRef = useRef<Set<string>>(new Set());
 
   activeIndexRef.current = activeIndex;
   clipsRef.current = clips;
@@ -31,7 +32,9 @@ export default function DiscoverPage() {
   useEffect(() => {
     if (!user || !session) return;
     getDiscoverFeed(user.id, session.access_token).then((c) => {
-      setClips(c);
+      const fresh = c.filter((clip) => !seenClipIdsRef.current.has(clip.id));
+      fresh.forEach((clip) => seenClipIdsRef.current.add(clip.id));
+      setClips(fresh);
       setFetching(false);
     }).catch(() => setFetching(false));
   }, [user, session]);
@@ -64,7 +67,11 @@ export default function DiscoverPage() {
     if (fetchingMoreRef.current) return;
     fetchingMoreRef.current = true;
     getDiscoverFeed(user.id, session.access_token)
-      .then((more) => setClips((prev) => [...prev, ...more]))
+      .then((more) => {
+        const fresh = more.filter((clip) => !seenClipIdsRef.current.has(clip.id));
+        fresh.forEach((clip) => seenClipIdsRef.current.add(clip.id));
+        setClips((prev) => [...prev, ...fresh]);
+      })
       .finally(() => { fetchingMoreRef.current = false; });
   }, [activeIndex, clips.length, user, session]);
 
@@ -200,7 +207,11 @@ export default function DiscoverPage() {
                 if (!user || !session || loadingMore) return;
                 setLoadingMore(true);
                 getDiscoverFeed(user.id, session.access_token)
-                  .then((more) => setClips((prev) => [...prev, ...more]))
+                  .then((more) => {
+                    const fresh = more.filter((clip) => !seenClipIdsRef.current.has(clip.id));
+                    fresh.forEach((clip) => seenClipIdsRef.current.add(clip.id));
+                    setClips((prev) => [...prev, ...fresh]);
+                  })
                   .finally(() => setLoadingMore(false));
               }}
               className="text-zinc-500 text-sm hover:text-white transition disabled:opacity-40"

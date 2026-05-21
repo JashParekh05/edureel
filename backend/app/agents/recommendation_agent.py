@@ -70,6 +70,39 @@ def _node_identify_mastered(state: RecommendationState) -> dict:
     return {"mastered_slugs": mastered}
 
 
+def _generate_related_topics(path_slugs: list[str]) -> list[dict]:
+    """Call GPT to generate domain-relevant topic slugs when fallback candidates are off-domain."""
+    import os
+    from openai import OpenAI
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            max_tokens=400,
+            messages=[
+                {"role": "system", "content": "You generate educational topic slugs. Return JSON only."},
+                {
+                    "role": "user",
+                    "content": f"""A student is learning these topics: {path_slugs}
+
+Generate 6 closely related next topics they should learn (same domain, progressive difficulty).
+Return JSON array:
+[{{"slug": "kebab-case-slug", "name": "Human Readable Name", "difficulty": "beginner|intermediate|advanced"}}]
+JSON only.""",
+                },
+            ],
+        )
+        raw = response.choices[0].message.content.strip()
+        if "```" in raw:
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        return json.loads(raw.strip())
+    except Exception as exc:
+        logger.warning(f"[rec_agent] _generate_related_topics failed: {exc}")
+        return []
+
+
 def _node_find_candidates(state: RecommendationState) -> dict:
     """Forward-graph traversal: find topics whose prerequisites include mastered topics."""
     from app.db.supabase import get_client
@@ -118,9 +151,42 @@ def _node_find_candidates(state: RecommendationState) -> dict:
                 if clip_count > 0:
                     seen_candidate_slugs.add(t["slug"])
                     fallback_with_counts.append({**t, "source": "fallback", "clip_count": clip_count})
-        # Sort by clip count so well-stocked topics rank first
         fallback_with_counts.sort(key=lambda x: x["clip_count"], reverse=True)
-        candidates.extend(fallback_with_counts[:10])
+
+        # Keep only candidates that share word tokens with the path's domain.
+        # Skip the domain check when path is empty — no signal to match against.
+        path_words = {w for s in path_slugs for w in s.split("-")}
+        on_domain = (
+            [c for c in fallback_with_counts if any(w in path_words for w in c["slug"].split("-"))]
+            if path_words else fallback_with_counts
+        )
+
+        if on_domain:
+            candidates.extend(on_domain[:10])
+        elif fallback_with_counts:
+            # All DB candidates are off-domain — generate domain-relevant topics via LLM
+            generated = _generate_related_topics(path_slugs)
+            if generated:
+                for t in generated:
+                    slug = t.get("slug", "")
+                    if not slug or slug in seen_candidate_slugs:
+                        continue
+                    try:
+                        existing = db.table("topics").select("slug").eq("slug", slug).execute()
+                        if not existing.data:
+                            db.table("topics").insert({
+                                "slug": slug,
+                                "name": t.get("name", slug.replace("-", " ").title()),
+                                "difficulty": t.get("difficulty", "intermediate"),
+                                "prerequisites": [],
+                            }).execute()
+                    except Exception as exc:
+                        logger.warning(f"[rec_agent] failed to upsert generated topic {slug}: {exc}")
+                    seen_candidate_slugs.add(slug)
+                    candidates.append({**t, "source": "llm_generated"})
+                logger.info(f"[rec_agent] replaced off-domain fallback with LLM-generated: {[c['slug'] for c in candidates]}")
+            else:
+                candidates.extend(fallback_with_counts[:10])
 
     # Batch clip counts for prerequisite-graph candidates (not set yet)
     needs_count = [c for c in candidates if "clip_count" not in c]

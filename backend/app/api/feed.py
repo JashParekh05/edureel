@@ -728,15 +728,79 @@ def _fetch_discover_clips(
     return _spread_by_source(clips[:limit])
 
 
+_INTEREST_TOPIC_SEEDS: dict[str, list[str]] = {
+    "science": ["scientific-method", "physics-motion", "chemistry-atoms", "energy-and-work", "waves-and-sound"],
+    "history": ["ancient-civilizations", "world-war-ii", "american-revolution", "renaissance", "cold-war-history"],
+    "math": ["algebra-basics", "geometry-fundamentals", "statistics-intro", "probability-basics", "number-theory"],
+    "technology": ["how-computers-work", "internet-basics", "programming-intro", "cybersecurity-basics", "ai-intro"],
+    "space": ["solar-system", "stars-and-galaxies", "black-holes", "space-exploration", "cosmology-basics"],
+    "biology": ["biology-cells", "dna-and-genetics", "evolution-basics", "human-body-systems", "ecology-basics"],
+    "philosophy": ["critical-thinking-basics", "logic-and-reasoning", "ethics-intro", "philosophy-of-mind", "epistemology"],
+    "economics": ["supply-and-demand", "microeconomics-basics", "personal-finance-basics", "market-structures", "macroeconomics-intro"],
+    "engineering": ["engineering-design", "mechanics-basics", "electrical-circuits", "materials-science", "structural-engineering"],
+    "art": ["color-theory", "drawing-fundamentals", "art-history-intro", "design-principles", "composition-basics"],
+    "psychology": ["psychology-intro", "cognitive-psychology", "behavioral-psychology", "developmental-psychology", "social-psychology"],
+    "language": ["linguistics-intro", "language-acquisition", "grammar-fundamentals", "phonetics-basics", "writing-skills"],
+}
+
+_GRADE_DIFFICULTY: dict[str, str] = {
+    "preschool": "beginner",
+    "elementary": "beginner",
+    "middle_school": "beginner",
+    "high_school": "intermediate",
+    "college": "intermediate",
+    "professional": "advanced",
+}
+
+
+def _interest_seed_slugs(interests: list[str], difficulty: str) -> list[str]:
+    """Map user interest tags to starter topic slugs."""
+    slugs: list[str] = []
+    seen: set[str] = set()
+    for tag in interests:
+        for slug in _INTEREST_TOPIC_SEEDS.get(tag.lower().strip(), []):
+            if slug not in seen:
+                seen.add(slug)
+                slugs.append(slug)
+    return slugs
+
+
+def _seed_topics_bg(slugs: list[str], difficulty: str) -> None:
+    """Background: upsert topic rows and run pipeline for any with no clips yet."""
+    from app.agents.pipeline_agent import run_pipeline
+    db = get_client()
+    for slug in slugs:
+        name = slug.replace("-", " ").title()
+        try:
+            existing = db.table("topics").select("slug").eq("slug", slug).execute()
+            if not existing.data:
+                db.table("topics").insert({
+                    "slug": slug,
+                    "name": name,
+                    "difficulty": difficulty,
+                    "prerequisites": [],
+                }).execute()
+        except Exception as exc:
+            logger.warning(f"[feed] Failed to upsert seed topic {slug}: {exc}")
+            continue
+        try:
+            clips = db.table("clips").select("id").eq("topic_slug", slug).limit(1).execute()
+            if not clips.data:
+                run_pipeline(slug, name)
+                logger.info(f"[feed] seeded pipeline for interest topic={slug}")
+        except Exception as exc:
+            logger.warning(f"[feed] Failed to seed pipeline for {slug}: {exc}")
+
+
 @router.get("/discover/{user_id}", response_model=list[Clip])
-async def get_discover_feed(user_id: str, limit: int = Query(20, le=50), caller_id: str = Depends(require_user)):
+async def get_discover_feed(user_id: str, background_tasks: BackgroundTasks, limit: int = Query(20, le=50), caller_id: str = Depends(require_user)):
     if caller_id != user_id:
         raise HTTPException(status_code=403, detail="Access denied")
     db = get_client()
 
     # Single query: user profile with accumulated vectors
     try:
-        profile = db.table("user_profiles").select("interests, taste_vector, interest_vector").eq("user_id", user_id).limit(1).execute()
+        profile = db.table("user_profiles").select("interests, taste_vector, interest_vector, grade_level").eq("user_id", user_id).limit(1).execute()
         p = profile.data[0] if profile.data else {}
     except Exception as e:
         logger.warning(f"[feed] Failed to fetch user_profiles for user={user_id}: {e}")
@@ -744,6 +808,7 @@ async def get_discover_feed(user_id: str, limit: int = Query(20, le=50), caller_
     interests: list[str] = p.get("interests") or []
     taste_vector = _parse_vector(p.get("taste_vector"))
     user_interest_vector: dict[str, float] = p.get("interest_vector") or {}
+    grade_level: str = p.get("grade_level") or "high_school"
 
     # Build seen_ids from all sessions — single batched query
     seen_ids: set[str] = set()
@@ -762,7 +827,18 @@ async def get_discover_feed(user_id: str, limit: int = Query(20, le=50), caller_
     except Exception as e:
         logger.error(f"[feed] Failed to fetch topics for discover user={user_id}: {e}")
         return []
-    relevant_slugs = _match_interest_slugs(interests, all_slugs, taste_vector=taste_vector)
+    # Cold start: no taste signal yet — seed interest-aligned topics and prefer them for discovery
+    if taste_vector is None and interests:
+        difficulty = _GRADE_DIFFICULTY.get(grade_level, "intermediate")
+        seed_slugs = _interest_seed_slugs(interests, difficulty)
+        if seed_slugs:
+            background_tasks.add_task(_seed_topics_bg, seed_slugs, difficulty)
+            existing_seed = [s for s in seed_slugs if s in all_slugs]
+            relevant_slugs = existing_seed[:10] if existing_seed else _match_interest_slugs(interests, all_slugs)
+        else:
+            relevant_slugs = _match_interest_slugs(interests, all_slugs)
+    else:
+        relevant_slugs = _match_interest_slugs(interests, all_slugs, taste_vector=taste_vector)
 
     return _fetch_discover_clips(db, relevant_slugs, all_slugs, seen_ids, limit, interest_vector=user_interest_vector, taste_vector=taste_vector)
 
