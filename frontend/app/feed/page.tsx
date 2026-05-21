@@ -39,6 +39,7 @@ function FeedContent() {
   const seenClipIdsRef = useRef<Set<string>>(new Set());
   const fetchingMoreRef = useRef(false);
   const loadFeed = useCallback(async () => {
+    if (!session) return;
     try {
       if (sessionId) {
         const feeds: FeedResponse[] = await getPathFeed(sessionId, session?.access_token ?? "");
@@ -152,7 +153,7 @@ function FeedContent() {
         // stop polling silently (user already has content to watch)
         if (clipsRef.current.length === 0) setTimedOut(true);
         setProcessing(false);
-      }, 30000);
+      }, 300000);
       return () => { clearInterval(pollingRef.current); clearTimeout(timeout); };
     }
     return () => clearInterval(pollingRef.current);

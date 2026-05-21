@@ -24,13 +24,13 @@ class Clip(BaseModel):
     id: str
     topic_slug: str
     title: str
-    description: str | None
+    description: str | None = None
     video_url: str
-    thumbnail_url: str | None
-    duration_seconds: int | None
-    transcript: str | None
-    source_url: str | None
-    source_platform: str | None
+    thumbnail_url: str | None = None
+    duration_seconds: int | None = None
+    transcript: str | None = None
+    source_url: str | None = None
+    source_platform: str | None = None
     hook_score: float = 0.5
     final_score: float | None = None
     created_at: str | None = None

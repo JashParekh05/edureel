@@ -10,35 +10,38 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/topics", tags=["topics"])
 
 
-async def _process_topics_sequential(topics: list[tuple[str, str]]) -> None:
-    """Generate section plans then run the pipeline once per section per topic."""
+async def _process_single_topic(slug: str, name: str) -> None:
     from app.agents.pipeline_agent import run_pipeline
     from app.agents.section_planner import plan_and_store_sections
-    for slug, name in topics:
-        try:
-            sections = await asyncio.to_thread(plan_and_store_sections, slug, name)
-        except Exception as e:
-            logger.error(f"[topics] Section planning failed for topic={slug}: {e}")
-            sections = []
+    try:
+        sections = await asyncio.to_thread(plan_and_store_sections, slug, name)
+    except Exception as e:
+        logger.error(f"[topics] Section planning failed for topic={slug}: {e}")
+        sections = []
 
-        if sections:
-            for i, section in enumerate(sections):
-                try:
-                    await asyncio.to_thread(
-                        run_pipeline,
-                        slug,
-                        name,
-                        section["search_query"],
-                        section["section_index"],
-                        i == 0,  # clear existing clips only before the first section
-                    )
-                except Exception as e:
-                    logger.error(f"[topics] Pipeline failed for {slug} section {section['section_index']}: {e}")
-        else:
+    if sections:
+        for i, section in enumerate(sections):
             try:
-                await asyncio.to_thread(run_pipeline, slug, name)
+                await asyncio.to_thread(
+                    run_pipeline,
+                    slug,
+                    name,
+                    section["search_query"],
+                    section["section_index"],
+                    i == 0,  # clear existing clips only before the first section
+                )
             except Exception as e:
-                logger.error(f"[topics] Background pipeline failed for topic={slug}: {e}")
+                logger.error(f"[topics] Pipeline failed for {slug} section {section['section_index']}: {e}")
+    else:
+        try:
+            await asyncio.to_thread(run_pipeline, slug, name)
+        except Exception as e:
+            logger.error(f"[topics] Background pipeline failed for topic={slug}: {e}")
+
+
+async def _process_topics_parallel(topics: list[tuple[str, str]]) -> None:
+    """Process each topic concurrently; sections within a topic remain sequential."""
+    await asyncio.gather(*(_process_single_topic(slug, name) for slug, name in topics))
 
 
 @router.post("/", response_model=LearningPath)
@@ -112,8 +115,8 @@ async def create_learning_path(request: Request, req: TopicRequest, background_t
             topics_to_process.append((topic.slug, topic.name))
 
     if topics_to_process:
-        background_tasks.add_task(_process_topics_sequential, topics_to_process)
-        logger.info(f"[topics] Queued {len(topics_to_process)} new topics sequentially: {[t[0] for t in topics_to_process]}")
+        background_tasks.add_task(_process_topics_parallel, topics_to_process)
+        logger.info(f"[topics] Queued {len(topics_to_process)} new topics in parallel: {[t[0] for t in topics_to_process]}")
     else:
         logger.info("[topics] All path topics already cached, no pipeline work needed")
 

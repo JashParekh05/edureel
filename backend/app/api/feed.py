@@ -36,7 +36,7 @@ async def _extend_path(session_id: str) -> None:
     """Background: pick the next topic via recommendation_agent and add it to the path.
     Uses user's accumulated taste/interest vectors to choose what's next."""
     from app.agents.recommendation_agent import run_recommendations
-    from app.api.topics import _process_topics_sequential
+    from app.api.topics import _process_single_topic
 
     db = get_client()
     try:
@@ -83,8 +83,8 @@ async def _extend_path(session_id: str) -> None:
     except Exception as e:
         logger.warning(f"[feed] extend: failed to upsert topic row for slug={new_rec.slug}: {e}")
 
-    # Sequential processor will cache-check internally — safe to call even if clips exist
-    await _process_topics_sequential([(new_rec.slug, new_rec.name)])
+    # Cache-check is inside _process_single_topic — safe to call even if clips exist
+    await _process_single_topic(new_rec.slug, new_rec.name)
 
 
 def _parse_vector(v) -> list[float] | None:
@@ -412,24 +412,64 @@ def _fetch_clips_for_slug(
     interest_vector: dict[str, float] | None = None,
     taste_vector: list[float] | None = None,
 ) -> list[Clip]:
+    # Discover which sections exist so we sample evenly across the curriculum.
+    # Without this, ordering by created_at puts all section-0 clips first and
+    # section 3 clips never appear within the limit.
     try:
-        result = (
+        sections_res = (
             db.table("clips")
-            .select("*")
+            .select("section_index")
             .eq("topic_slug", slug)
-            .order("created_at", desc=False)
-            .limit(limit)
             .execute()
         )
+        section_indices = sorted({r["section_index"] for r in sections_res.data if r["section_index"] is not None})
     except Exception as e:
-        logger.warning(f"[feed] Failed to fetch clips for slug={slug}: {e}")
-        return []
-    clips = []
-    for row in result.data:
-        if seen_ids and row["id"] in seen_ids:
-            continue
-        row.setdefault("hook_score", 0.5)
-        clips.append(Clip(**row))
+        logger.warning(f"[feed] Failed to fetch section indices for slug={slug}: {e}")
+        section_indices = []
+
+    clips: list[Clip] = []
+
+    if section_indices:
+        per_section = max(2, limit // len(section_indices))
+        for section_idx in section_indices:
+            try:
+                result = (
+                    db.table("clips")
+                    .select("*")
+                    .eq("topic_slug", slug)
+                    .eq("section_index", section_idx)
+                    .order("hook_score", desc=True)
+                    .limit(per_section)
+                    .execute()
+                )
+            except Exception as e:
+                logger.warning(f"[feed] Failed to fetch clips for slug={slug} section={section_idx}: {e}")
+                continue
+            for row in result.data:
+                if seen_ids and row["id"] in seen_ids:
+                    continue
+                row.setdefault("hook_score", 0.5)
+                clips.append(Clip(**row))
+
+    # Fallback when no section data exists yet (pipeline still running)
+    if not clips:
+        try:
+            result = (
+                db.table("clips")
+                .select("*")
+                .eq("topic_slug", slug)
+                .order("hook_score", desc=True)
+                .limit(limit)
+                .execute()
+            )
+        except Exception as e:
+            logger.warning(f"[feed] Failed to fetch clips for slug={slug}: {e}")
+            return []
+        for row in result.data:
+            if seen_ids and row["id"] in seen_ids:
+                continue
+            row.setdefault("hook_score", 0.5)
+            clips.append(Clip(**row))
 
     clip_ids = [c.id for c in clips]
     pop_stats = _get_clip_population_stats(db, clip_ids)
