@@ -11,13 +11,34 @@ router = APIRouter(prefix="/api/topics", tags=["topics"])
 
 
 async def _process_topics_sequential(topics: list[tuple[str, str]]) -> None:
-    """Process topics one at a time. Keeps memory at one pipeline's worth (avoids OOM)."""
+    """Generate section plans then run the pipeline once per section per topic."""
     from app.agents.pipeline_agent import run_pipeline
+    from app.agents.section_planner import plan_and_store_sections
     for slug, name in topics:
         try:
-            await asyncio.to_thread(run_pipeline, slug, name)
+            sections = await asyncio.to_thread(plan_and_store_sections, slug, name)
         except Exception as e:
-            logger.error(f"[topics] Background pipeline failed for topic={slug}: {e}")
+            logger.error(f"[topics] Section planning failed for topic={slug}: {e}")
+            sections = []
+
+        if sections:
+            for i, section in enumerate(sections):
+                try:
+                    await asyncio.to_thread(
+                        run_pipeline,
+                        slug,
+                        name,
+                        section["search_query"],
+                        section["section_index"],
+                        i == 0,  # clear existing clips only before the first section
+                    )
+                except Exception as e:
+                    logger.error(f"[topics] Pipeline failed for {slug} section {section['section_index']}: {e}")
+        else:
+            try:
+                await asyncio.to_thread(run_pipeline, slug, name)
+            except Exception as e:
+                logger.error(f"[topics] Background pipeline failed for topic={slug}: {e}")
 
 
 @router.post("/", response_model=LearningPath)

@@ -11,6 +11,9 @@ logger = logging.getLogger(__name__)
 class PipelineState(TypedDict):
     topic_slug: str
     topic_name: str
+    search_query: str | None     # section-specific query; overrides default if set
+    section_index: int | None    # which section these clips belong to
+    clear_existing: bool         # delete old clips before storing (False for sections 1-3)
     videos: list[dict]           # raw YouTube search items + details
     clips: list[dict]            # segmented clips ready for DB
     stored_count: int
@@ -23,8 +26,8 @@ def _node_search(state: PipelineState) -> dict:
     if not api_key:
         return {"errors": ["YOUTUBE_API_KEY not set"], "videos": []}
 
-    query = f"{state['topic_name']} explained"
-    logger.info(f"[pipeline_agent] search: topic={state['topic_slug']} query='{query}' (~100 units)")
+    query = state.get("search_query") or f"{state['topic_name']} explained"
+    logger.info(f"[pipeline_agent] search: topic={state['topic_slug']} section={state.get('section_index')} query='{query}' (~100 units)")
 
     search = requests.get(
         "https://www.googleapis.com/youtube/v3/search",
@@ -102,6 +105,7 @@ def _node_segment(state: PipelineState) -> dict:
         vid_id = v["video_id"]
         base = {
             "topic_slug": topic_slug,
+            "section_index": state.get("section_index"),
             "title": v["title"],
             "description": v["description"],
             "video_url": f"https://www.youtube.com/embed/{vid_id}?autoplay=1&rel=0&modestbranding=1",
@@ -144,7 +148,8 @@ def _node_segment(state: PipelineState) -> dict:
 def _node_store(state: PipelineState) -> dict:
     from app.db.supabase import get_client
     db = get_client()
-    db.table("clips").delete().eq("topic_slug", state["topic_slug"]).execute()
+    if state.get("clear_existing", True):
+        db.table("clips").delete().eq("topic_slug", state["topic_slug"]).execute()
     stored = 0
     for clip in state["clips"]:
         try:
@@ -173,8 +178,14 @@ def build_pipeline_graph() -> StateGraph:
 _pipeline_graph = None
 
 
-def run_pipeline(topic_slug: str, topic_name: str) -> int:
-    """Run the full pipeline for a topic. Returns number of clips stored."""
+def run_pipeline(
+    topic_slug: str,
+    topic_name: str,
+    search_query: str | None = None,
+    section_index: int | None = None,
+    clear_existing: bool = True,
+) -> int:
+    """Run the full pipeline for a topic (or one section of a topic). Returns clips stored."""
     global _pipeline_graph
     if _pipeline_graph is None:
         _pipeline_graph = build_pipeline_graph()
@@ -182,6 +193,9 @@ def run_pipeline(topic_slug: str, topic_name: str) -> int:
     result = _pipeline_graph.invoke({
         "topic_slug": topic_slug,
         "topic_name": topic_name,
+        "search_query": search_query,
+        "section_index": section_index,
+        "clear_existing": clear_existing,
         "videos": [],
         "clips": [],
         "stored_count": 0,

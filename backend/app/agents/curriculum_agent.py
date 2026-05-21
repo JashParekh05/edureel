@@ -107,17 +107,25 @@ def _node_build_curriculum(state: CurriculumState) -> dict:
         if curated and library_relevant else ""
     )
 
+    specific_concepts = intent.get('specific_concepts', [])
     system = f"""You are a curriculum designer for an educational short-form video platform.
 The learner's goal: {intent.get('goal', state['query'])}
 Their level: {intent.get('level', 'beginner')}
 Domain: {intent.get('domain', 'general')}
+Specific concepts they mentioned: {specific_concepts if specific_concepts else 'see goal above'}
 
-Return ONLY 1-2 initial topics — the platform extends the path automatically based on what the learner engages with.
-Pick the single most foundational + immediately relevant topic(s) for this query. Don't try to cover the subject area upfront — the algorithm handles that as signals come in.
+Generate a sequential learning path of 5-8 topics that builds from foundations up to exactly what they asked about.
+Think of each topic as one chapter — narrow enough that a single 5-10 minute YouTube video can cover it well.
+
+Rules:
+- Start with the prerequisite context the learner needs, end with the specific thing they asked about
+- Do NOT use broad survey topics (bad: "Introduction to American History"). Be specific (good: "Articles of Confederation Weaknesses")
+- Each topic must directly build on the previous one — no tangents, no parallel alternatives
+- The final 1-2 topics should be the learner's exact goal at the appropriate depth
 
 Order topics from foundational to advanced (prerequisites first).
 A library of pre-built topics exists. Only reuse a slug if the topic is EXACTLY the same concept.
-If the user asks about something specific (e.g. a framework or tool not in the library), create a new accurate slug.
+If the user asks about something specific (e.g. a framework, tool, or historical event not in the library), create a new accurate slug.
 Slugs must be lowercase with hyphens. Always return valid JSON."""
 
     schema = """
@@ -136,7 +144,7 @@ Slugs must be lowercase with hyphens. Always return valid JSON."""
 
     response = client.chat.completions.create(
         model=MODEL,
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[
             {"role": "system", "content": system},
             {
