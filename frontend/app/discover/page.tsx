@@ -14,6 +14,7 @@ export default function DiscoverPage() {
   const [fetching, setFetching] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [coldStartTimedOut, setColdStartTimedOut] = useState(false);
+  const [readySession, setReadySession] = useState<string | null>(null);
   const pollRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const coldStartTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
@@ -132,6 +133,28 @@ export default function DiscoverPage() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [goTo]);
 
+  // Toast: poll localStorage for a completed background path generation
+  useEffect(() => {
+    const existing = localStorage.getItem("lr_ready_session");
+    if (existing) {
+      localStorage.removeItem("lr_pending_query");
+      localStorage.removeItem("lr_ready_session");
+      setReadySession(existing);
+      return;
+    }
+    if (!localStorage.getItem("lr_pending_query")) return;
+    const interval = setInterval(() => {
+      const sess = localStorage.getItem("lr_ready_session");
+      if (sess) {
+        clearInterval(interval);
+        localStorage.removeItem("lr_pending_query");
+        localStorage.removeItem("lr_ready_session");
+        setReadySession(sess);
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
   if (loading || !user) return null;
 
   if (fetching) {
@@ -208,6 +231,27 @@ export default function DiscoverPage() {
           ▼
         </button>
       </div>
+
+      {/* Learning path ready toast */}
+      {readySession && (
+        <div className="absolute bottom-8 inset-x-4 z-30 flex justify-center pointer-events-none">
+          <div className="pointer-events-auto flex items-center gap-3 bg-white text-black rounded-2xl px-4 py-3 shadow-2xl">
+            <button
+              onClick={() => router.push(`/feed?session=${readySession}`)}
+              className="text-sm font-semibold"
+            >
+              Your learning path is ready →
+            </button>
+            <button
+              onClick={() => setReadySession(null)}
+              className="text-zinc-400 hover:text-zinc-600 text-xs leading-none"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div className="absolute top-0 inset-x-0 z-30 h-0.5 bg-zinc-800">

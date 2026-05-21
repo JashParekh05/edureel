@@ -56,15 +56,15 @@ export default function Home() {
     const trimmed = q.trim();
     if (!trimmed || !user || !session) return;
     setSubmitting(true);
-    setError("");
-    try {
-      const result = await createLearningPath(trimmed, user.id, session.access_token);
-      setPath(result);
-    } catch {
-      setError("Something went wrong. Is the backend running?");
-    } finally {
-      setSubmitting(false);
-    }
+    localStorage.setItem("lr_pending_query", trimmed);
+    router.push("/discover");
+    createLearningPath(trimmed, user.id, session.access_token)
+      .then((result) => {
+        localStorage.setItem("lr_ready_session", result.session_id);
+      })
+      .catch(() => {
+        localStorage.removeItem("lr_pending_query");
+      });
   }
 
   if (loading || !user) return null;
