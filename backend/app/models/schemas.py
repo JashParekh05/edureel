@@ -44,9 +44,12 @@ class Clip(BaseModel):
         return v
 
 
+GradeLevel = Literal["preschool", "elementary", "middle_school", "high_school", "college", "professional"]
+
+
 class InterestsPayload(BaseModel):
     interests: list[str]
-    grade_level: str | None = None
+    grade_level: GradeLevel | None = None
 
 
 class ClipEvent(BaseModel):

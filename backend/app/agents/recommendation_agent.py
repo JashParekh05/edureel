@@ -1,6 +1,7 @@
 """LangGraph agent: analyze watch history → score topics → surface next recommendations."""
 import json
 import logging
+import re
 from typing import TypedDict, Annotated
 import operator
 
@@ -68,6 +69,9 @@ def _node_identify_mastered(state: RecommendationState) -> dict:
     mastered = [slug for slug, rate in state["topic_completion"].items() if rate >= 0.7]
     logger.info(f"[rec_agent] mastered: {mastered}")
     return {"mastered_slugs": mastered}
+
+
+_SLUG_RE = re.compile(r'^[a-z0-9][a-z0-9-]{1,79}$')
 
 
 def _generate_related_topics(path_slugs: list[str]) -> list[dict]:
@@ -170,6 +174,9 @@ def _node_find_candidates(state: RecommendationState) -> dict:
                 for t in generated:
                     slug = t.get("slug", "")
                     if not slug or slug in seen_candidate_slugs:
+                        continue
+                    if not _SLUG_RE.match(slug):
+                        logger.warning(f"[rec_agent] skipping malformed LLM slug: {slug!r}")
                         continue
                     try:
                         existing = db.table("topics").select("slug").eq("slug", slug).execute()

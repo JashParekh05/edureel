@@ -873,6 +873,9 @@ async def record_clip_event(request: Request, clip_id: str, event: ClipEvent, ca
             except Exception as e:
                 logger.warning(f"[feed] Failed to fetch user_id for session={event.session_id}: {e}")
                 user_id = None
+            if user_id and user_id != caller_id:
+                logger.warning(f"[feed] session ownership mismatch: caller={caller_id} session_owner={user_id}")
+                return
             _update_interest_vector(
                 db, event.session_id, clip.data[0]["topic_slug"],
                 event.completed, event.replay_count, event.feedback,
