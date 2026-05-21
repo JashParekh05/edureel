@@ -407,7 +407,7 @@ def _fetch_clips_for_slug(
     db,
     slug: str,
     seen_ids: set[str] | None = None,
-    limit: int = 8,
+    limit: int = 16,
     user_avg_watch_seconds: float | None = None,
     interest_vector: dict[str, float] | None = None,
     taste_vector: list[float] | None = None,
@@ -944,19 +944,24 @@ async def get_discover_feed(user_id: str, background_tasks: BackgroundTasks, lim
 
     clips = _fetch_discover_clips(db, relevant_slugs, all_slugs, seen_ids, limit, interest_vector=user_interest_vector, taste_vector=taste_vector)
 
-    # Global fallback: seed topics are still generating — return best available clips from any topic
-    if not clips:
+    # Global fallback: seed topics are still generating — return best available clips from any topic.
+    # Over-fetch so we still surface UNSEEN clips for returning users who've already watched the
+    # top-hook_score ones (otherwise they get an empty feed and the UI hangs).
+    if len(clips) < limit:
         _DISCOVER_COLS = "id,topic_slug,title,description,video_url,thumbnail_url,duration_seconds,source_url,source_platform,hook_score,created_at,embedding"
+        already = {c.id for c in clips}
         try:
             fallback = (
                 db.table("clips")
                 .select(_DISCOVER_COLS)
                 .order("hook_score", desc=True)
-                .limit(limit)
+                .limit(limit * 5)
                 .execute()
             )
             for row in fallback.data:
-                if row["id"] not in seen_ids:
+                if len(clips) >= limit:
+                    break
+                if row["id"] not in seen_ids and row["id"] not in already:
                     row.setdefault("hook_score", 0.5)
                     clips.append(Clip(**row))
         except Exception as e:

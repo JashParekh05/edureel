@@ -54,13 +54,15 @@ export default function DiscoverPage() {
     }
 
     doFetch();
-    // Poll every 4s while cold-start seeds are generating
+    // Poll every 4s while cold-start seeds are generating.
+    // With the backend over-fetch fix, a stocked DB resolves on the first call;
+    // this 12s window only covers the genuine cold-start (seeds still generating).
     pollRef.current = setInterval(doFetch, 4000);
     coldStartTimeoutRef.current = setTimeout(() => {
       clearInterval(pollRef.current);
       setFetching(false);
       setColdStartTimedOut(true);
-    }, 30000);
+    }, 12000);
 
     return () => {
       clearInterval(pollRef.current);
