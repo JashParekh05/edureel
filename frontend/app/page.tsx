@@ -56,15 +56,15 @@ export default function Home() {
     const trimmed = q.trim();
     if (!trimmed || !user || !session) return;
     setSubmitting(true);
-    localStorage.setItem("lr_pending_query", trimmed);
-    router.push("/discover");
-    createLearningPath(trimmed, user.id, session.access_token)
-      .then((result) => {
-        localStorage.setItem("lr_ready_session", result.session_id);
-      })
-      .catch(() => {
-        localStorage.removeItem("lr_pending_query");
-      });
+    setError("");
+    try {
+      const result = await createLearningPath(trimmed, user.id, session.access_token);
+      setPath(result);
+    } catch {
+      setError("Couldn't build your learning path. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (loading || !user) return null;
@@ -101,39 +101,58 @@ export default function Home() {
 
         {!path ? (
           <>
-            <div className="space-y-2">
-              <p className="text-zinc-400 text-lg">What do you want to learn today?</p>
-              <div className="flex gap-2">
-                <input
-                  className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-400"
-                  placeholder="e.g. I want to learn hashmaps and dynamic programming"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSubmit(query)}
-                  disabled={submitting}
-                />
+            {submitting ? (
+              <div className="space-y-5">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 flex flex-col items-center gap-4 text-center">
+                  <div className="w-10 h-10 border-2 border-zinc-700 border-t-white rounded-full animate-spin" />
+                  <div className="space-y-1">
+                    <p className="text-white font-medium">Building your learning path…</p>
+                    <p className="text-zinc-500 text-sm line-clamp-1">{query}</p>
+                  </div>
+                </div>
                 <button
-                  onClick={() => handleSubmit(query)}
-                  disabled={submitting || !query.trim()}
-                  className="bg-white text-black font-semibold px-5 py-3 rounded-xl disabled:opacity-40 hover:bg-zinc-100 transition"
+                  onClick={() => router.push("/discover")}
+                  className="w-full border border-zinc-700 text-zinc-300 hover:text-white py-3 rounded-xl text-sm font-medium transition"
                 >
-                  {submitting ? "…" : "Go"}
+                  Browse Discover while you wait →
                 </button>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <p className="text-zinc-400 text-lg">What do you want to learn today?</p>
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-400"
+                      placeholder="e.g. I want to learn hashmaps and dynamic programming"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSubmit(query)}
+                    />
+                    <button
+                      onClick={() => handleSubmit(query)}
+                      disabled={!query.trim()}
+                      className="bg-white text-black font-semibold px-5 py-3 rounded-xl disabled:opacity-40 hover:bg-zinc-100 transition"
+                    >
+                      Go
+                    </button>
+                  </div>
+                </div>
 
-            <div className="space-y-2">
-              <p className="text-zinc-500 text-sm">Try:</p>
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => { setQuery(s); handleSubmit(s); }}
-                  className="block w-full text-left text-zinc-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-zinc-900 transition"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+                <div className="space-y-2">
+                  <p className="text-zinc-500 text-sm">Try:</p>
+                  {SUGGESTIONS.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => { setQuery(s); handleSubmit(s); }}
+                      className="block w-full text-left text-zinc-400 hover:text-white text-sm px-3 py-2 rounded-lg hover:bg-zinc-900 transition"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             {history.length > 0 && (
               <div className="space-y-3">

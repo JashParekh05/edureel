@@ -157,6 +157,26 @@ export default function DiscoverPage() {
 
   if (loading || !user) return null;
 
+  const readyToast = readySession ? (
+    <div className="absolute bottom-8 inset-x-4 z-30 flex justify-center">
+      <div className="flex items-center gap-3 bg-white text-black rounded-2xl px-4 py-3 shadow-2xl">
+        <button
+          onClick={() => router.push(`/feed?session=${readySession}`)}
+          className="text-sm font-semibold"
+        >
+          Your learning path is ready →
+        </button>
+        <button
+          onClick={() => setReadySession(null)}
+          className="text-zinc-400 hover:text-zinc-600 text-xs leading-none"
+          aria-label="Dismiss"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   if (fetching) {
     return (
       <div className="fixed inset-0 bg-black flex flex-col items-center justify-center gap-5 text-white">
@@ -165,6 +185,7 @@ export default function DiscoverPage() {
         </button>
         <div className="w-12 h-12 border-2 border-zinc-700 border-t-white rounded-full animate-spin" />
         <p className="text-zinc-500 text-sm">Loading your feed…</p>
+        {readyToast}
       </div>
     );
   }
@@ -181,6 +202,7 @@ export default function DiscoverPage() {
           <button onClick={() => router.push("/")} className="bg-white text-black font-semibold px-6 py-3 rounded-2xl text-sm hover:bg-zinc-100 transition">
             Start learning →
           </button>
+          {readyToast}
         </div>
       );
     }
@@ -194,6 +216,7 @@ export default function DiscoverPage() {
           <p className="text-white font-medium">Building your feed</p>
           <p className="text-zinc-500 text-sm">Finding clips for your interests…</p>
         </div>
+        {readyToast}
       </div>
     );
   }
@@ -233,25 +256,7 @@ export default function DiscoverPage() {
       </div>
 
       {/* Learning path ready toast */}
-      {readySession && (
-        <div className="absolute bottom-8 inset-x-4 z-30 flex justify-center pointer-events-none">
-          <div className="pointer-events-auto flex items-center gap-3 bg-white text-black rounded-2xl px-4 py-3 shadow-2xl">
-            <button
-              onClick={() => router.push(`/feed?session=${readySession}`)}
-              className="text-sm font-semibold"
-            >
-              Your learning path is ready →
-            </button>
-            <button
-              onClick={() => setReadySession(null)}
-              className="text-zinc-400 hover:text-zinc-600 text-xs leading-none"
-              aria-label="Dismiss"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
+      {readyToast}
 
       {/* Progress bar */}
       <div className="absolute top-0 inset-x-0 z-30 h-0.5 bg-zinc-800">
