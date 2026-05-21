@@ -75,7 +75,7 @@ export default function Home() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold tracking-tight">LearnReel</h1>
+            <h1 className="text-4xl font-bold tracking-tight">Curio</h1>
             <p className="text-zinc-400 text-sm mt-1">{user.email}</p>
           </div>
           <button
