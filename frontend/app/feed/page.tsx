@@ -22,6 +22,7 @@ function FeedContent() {
   const [clips, setClips] = useState<Clip[]>([]);
   const [activeIndex, setActiveIndex] = useState(startIndex);
   const [processing, setProcessing] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [topicLabels, setTopicLabels] = useState<Record<string, string>>({});
   const [timedOut, setTimedOut] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -75,6 +76,8 @@ function FeedContent() {
       }
     } catch {
       setLoadError(true);
+    } finally {
+      setInitialLoading(false);
     }
   }, [sessionId, topicSlug, session]);
 
@@ -235,6 +238,14 @@ function FeedContent() {
     .split("-")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
+
+  if (initialLoading && clips.length === 0) {
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center">
+        <div className="w-12 h-12 border-2 border-zinc-700 border-t-white rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (!sessionId && !topicSlug) {
     return (

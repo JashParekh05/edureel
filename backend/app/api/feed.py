@@ -792,14 +792,35 @@ _GRADE_DIFFICULTY: dict[str, str] = {
     "professional": "advanced",
 }
 
+# Normalize onboarding grade-level values to GRADE_LEVEL_TOPIC_MAP keys
+_GRADE_LEVEL_ALIASES: dict[str, str] = {
+    "preschool": "elementary_school",
+    "elementary": "elementary_school",
+    "professional": "adult_learning",
+}
+
+# Normalize onboarding interest tags to GRADE_LEVEL_TOPIC_MAP category keys
+_INTEREST_ALIASES: dict[str, str] = {
+    "space": "science",
+    "biology": "science",
+    "philosophy": "english_language_arts",
+    "economics": "life_skills",
+    "engineering": "technology",
+    "art": "arts",
+    "psychology": "life_skills",
+    "language": "world_languages",
+}
+
 
 def _interest_seed_slugs(interests: list[str], grade_level: str) -> list[str]:
     """Map user interest tags + grade level to age-appropriate starter topic slugs."""
-    level_map = GRADE_LEVEL_TOPIC_MAP.get(grade_level) or GRADE_LEVEL_TOPIC_MAP["high_school"]
+    normalized_level = _GRADE_LEVEL_ALIASES.get(grade_level, grade_level)
+    level_map = GRADE_LEVEL_TOPIC_MAP.get(normalized_level) or GRADE_LEVEL_TOPIC_MAP["high_school"]
     slugs: list[str] = []
     seen: set[str] = set()
     for tag in interests:
-        for slug in level_map.get(tag.lower().strip(), []):
+        normalized_tag = _INTEREST_ALIASES.get(tag.lower().strip(), tag.lower().strip())
+        for slug in level_map.get(normalized_tag, []):
             if slug not in seen:
                 seen.add(slug)
                 slugs.append(slug)
