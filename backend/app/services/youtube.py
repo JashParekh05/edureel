@@ -41,6 +41,38 @@ def _cache_put(video_id: str, segments: list[dict]) -> None:
         logger.warning(f"[transcript] cache write failed for {video_id}: {exc}")
 
 
+def search_cache_get(query: str) -> list[dict] | None:
+    """Return cached YouTube search results (video dicts) for a query, or None."""
+    from app.db.supabase import get_client
+    try:
+        res = (
+            get_client()
+            .table("youtube_search_cache")
+            .select("videos")
+            .eq("query", query)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning(f"[yt-search] cache read failed for query={query!r}: {exc}")
+        return None
+    if res.data and res.data[0].get("videos"):
+        return res.data[0]["videos"]
+    return None
+
+
+def search_cache_put(query: str, videos: list[dict]) -> None:
+    """Store YouTube search results for a query (idempotent upsert)."""
+    from app.db.supabase import get_client
+    try:
+        get_client().table("youtube_search_cache").upsert(
+            {"query": query, "videos": videos},
+            on_conflict="query",
+        ).execute()
+    except Exception as exc:
+        logger.warning(f"[yt-search] cache write failed for query={query!r}: {exc}")
+
+
 def _fetch_transcript(video_id: str) -> list[dict] | None:
     """Fetch a YouTube transcript via TranscriptAPI.com, caching by video_id.
 

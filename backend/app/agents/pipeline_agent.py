@@ -22,11 +22,21 @@ class PipelineState(TypedDict):
 
 def _node_search(state: PipelineState) -> dict:
     import os, requests
+    from app.services.youtube import search_cache_get, search_cache_put
+
+    query = state.get("search_query") or f"{state['topic_name']} explained"
+
+    # Serve from cache when possible — a YouTube search costs 100 quota units
+    # (10k/day free). Caching by query means re-testing the same topics is free.
+    cached = search_cache_get(query)
+    if cached:
+        logger.info(f"[pipeline_agent] search cache hit: query='{query}' ({len(cached)} videos, 0 units)")
+        return {"videos": cached}
+
     api_key = os.environ.get("YOUTUBE_API_KEY", "")
     if not api_key:
         return {"errors": ["YOUTUBE_API_KEY not set"], "videos": []}
 
-    query = state.get("search_query") or f"{state['topic_name']} explained"
     logger.info(f"[pipeline_agent] search: topic={state['topic_slug']} section={state.get('section_index')} query='{query}' (~100 units)")
 
     search = requests.get(
@@ -80,6 +90,8 @@ def _node_search(state: PipelineState) -> dict:
             "duration_seconds": durations.get(vid_id, 180),
         })
 
+    if videos:
+        search_cache_put(query, videos)
     return {"videos": videos}
 
 
