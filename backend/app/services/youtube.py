@@ -9,13 +9,51 @@ TRANSCRIPT_API_KEY = os.environ.get("TRANSCRIPT_API_KEY", "")
 TRANSCRIPT_API_URL = "https://transcriptapi.com/api/v2/youtube/transcript"
 
 
+def _cache_get(video_id: str) -> list[dict] | None:
+    """Return cached transcript segments for video_id, or None if not cached."""
+    from app.db.supabase import get_client
+    try:
+        res = (
+            get_client()
+            .table("transcript_cache")
+            .select("segments")
+            .eq("video_id", video_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning(f"[transcript] cache read failed for {video_id}: {exc}")
+        return None
+    if res.data and res.data[0].get("segments"):
+        return res.data[0]["segments"]
+    return None
+
+
+def _cache_put(video_id: str, segments: list[dict]) -> None:
+    """Store transcript segments for video_id (idempotent upsert)."""
+    from app.db.supabase import get_client
+    try:
+        get_client().table("transcript_cache").upsert(
+            {"video_id": video_id, "segments": segments},
+            on_conflict="video_id",
+        ).execute()
+    except Exception as exc:
+        logger.warning(f"[transcript] cache write failed for {video_id}: {exc}")
+
+
 def _fetch_transcript(video_id: str) -> list[dict] | None:
-    """Fetch a YouTube transcript via TranscriptAPI.com.
+    """Fetch a YouTube transcript via TranscriptAPI.com, caching by video_id.
 
     Returns list of {start, duration, text} segments, or None on failure.
     Works from any IP (Render etc.) because the request hits TranscriptAPI's
-    network, not YouTube directly.
+    network, not YouTube directly. Results are cached in Supabase so repeated
+    pipeline runs over the same video never re-pay TranscriptAPI.
     """
+    cached = _cache_get(video_id)
+    if cached is not None:
+        logger.info(f"[transcript] cache hit for {video_id} ({len(cached)} segments)")
+        return cached
+
     if not TRANSCRIPT_API_KEY:
         logger.error("[transcript] TRANSCRIPT_API_KEY not set")
         return None
@@ -59,4 +97,6 @@ def _fetch_transcript(video_id: str) -> list[dict] | None:
                 "text": text,
             })
 
+    if out:
+        _cache_put(video_id, out)
     return out if out else None

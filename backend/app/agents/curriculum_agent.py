@@ -114,8 +114,9 @@ Their level: {intent.get('level', 'beginner')}
 Domain: {intent.get('domain', 'general')}
 Specific concepts they mentioned: {specific_concepts if specific_concepts else 'see goal above'}
 
-Generate a sequential learning path of 5-8 topics that builds from foundations up to exactly what they asked about.
+Generate a sequential learning path of exactly 3 topics that builds from foundations up to exactly what they asked about.
 Think of each topic as one chapter — narrow enough that a single 5-10 minute YouTube video can cover it well.
+Keep it to 3 — more topics are added automatically as the learner progresses, so do not pad the path.
 
 Rules:
 - Start with the prerequisite context the learner needs, end with the specific thing they asked about

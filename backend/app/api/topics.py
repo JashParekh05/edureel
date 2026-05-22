@@ -9,39 +9,59 @@ from app.rate_limit import limiter
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/topics", tags=["topics"])
 
+# Slugs whose pipeline is currently running. The feed reports a topic as
+# `processing` while its slug is in here, so the frontend keeps polling until
+# ALL sections finish — not just until the first clip lands.
+generating_slugs: set[str] = set()
+
 
 async def _process_single_topic(slug: str, name: str) -> None:
     from app.agents.pipeline_agent import run_pipeline
     from app.agents.section_planner import plan_and_store_sections
-    try:
-        sections = await asyncio.to_thread(plan_and_store_sections, slug, name)
-    except Exception as e:
-        logger.error(f"[topics] Section planning failed for topic={slug}: {e}")
-        sections = []
 
-    if sections:
-        for i, section in enumerate(sections):
-            try:
-                await asyncio.to_thread(
-                    run_pipeline,
-                    slug,
-                    name,
-                    section["search_query"],
-                    section["section_index"],
-                    i == 0,  # clear existing clips only before the first section
-                )
-            except Exception as e:
-                logger.error(f"[topics] Pipeline failed for {slug} section {section['section_index']}: {e}")
-    else:
+    generating_slugs.add(slug)
+    try:
         try:
-            await asyncio.to_thread(run_pipeline, slug, name)
+            sections = await asyncio.to_thread(plan_and_store_sections, slug, name)
         except Exception as e:
-            logger.error(f"[topics] Background pipeline failed for topic={slug}: {e}")
+            logger.error(f"[topics] Section planning failed for topic={slug}: {e}")
+            sections = []
+
+        if sections:
+            for i, section in enumerate(sections):
+                try:
+                    await asyncio.to_thread(
+                        run_pipeline,
+                        slug,
+                        name,
+                        section["search_query"],
+                        section["section_index"],
+                        i == 0,  # clear existing clips only before the first section
+                    )
+                except Exception as e:
+                    logger.error(f"[topics] Pipeline failed for {slug} section {section['section_index']}: {e}")
+        else:
+            try:
+                await asyncio.to_thread(run_pipeline, slug, name)
+            except Exception as e:
+                logger.error(f"[topics] Background pipeline failed for topic={slug}: {e}")
+    finally:
+        generating_slugs.discard(slug)
 
 
 async def _process_topics_parallel(topics: list[tuple[str, str]]) -> None:
-    """Process each topic concurrently; sections within a topic remain sequential."""
-    await asyncio.gather(*(_process_single_topic(slug, name) for slug, name in topics))
+    """Process the first topic on its own so its clips land fast (cold start),
+    then process the remaining topics concurrently. Sections within a topic
+    stay sequential. Running all topics at once starves the first one on
+    constrained hosts (Render 1 CPU / 512MB) and delays time-to-first-clip."""
+    if not topics:
+        return
+    # Slugs are marked generating synchronously by the POST handler before this
+    # task is scheduled, so deferred topics don't look orphaned to the feed.
+    first, *rest = topics
+    await _process_single_topic(*first)
+    if rest:
+        await asyncio.gather(*(_process_single_topic(slug, name) for slug, name in rest))
 
 
 @router.post("/", response_model=LearningPath)
@@ -115,6 +135,10 @@ async def create_learning_path(request: Request, req: TopicRequest, background_t
             topics_to_process.append((topic.slug, topic.name))
 
     if topics_to_process:
+        # Mark as generating synchronously (before the response returns) so the
+        # feed sees them as processing the instant the user navigates in — closes
+        # the race where self-heal would double-trigger a not-yet-started topic.
+        generating_slugs.update(slug for slug, _ in topics_to_process)
         background_tasks.add_task(_process_topics_parallel, topics_to_process)
         logger.info(f"[topics] Queued {len(topics_to_process)} new topics in parallel: {[t[0] for t in topics_to_process]}")
     else:

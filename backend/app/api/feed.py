@@ -570,7 +570,10 @@ async def get_path_feed(session_id: str, background_tasks: BackgroundTasks, call
                 except Exception as e:
                     logger.warning(f"Failed to seed session_embeddings for {session_id}: {e}")
 
+    from app.api.topics import generating_slugs, _process_single_topic
+
     feeds = []
+    missing_slugs: list[str] = []  # topics with no clips that aren't already generating
     for slug in path.data[0]["topic_slugs"]:
         # Skip topics the user has marked as already known
         if interest_vector.get(slug, 0.0) <= -0.8:
@@ -591,11 +594,37 @@ async def get_path_feed(session_id: str, background_tasks: BackgroundTasks, call
 
         clips = _transcript_boost(clips, user_query)
 
+        # A topic is "processing" while its pipeline is still running — not just
+        # when it has zero clips. Sections generate sequentially, so a topic can
+        # have a few clips while more are still on the way; reporting it done too
+        # early makes the frontend stop polling and the user gets stuck.
+        is_generating = slug in generating_slugs
+        if not clips and not is_generating:
+            missing_slugs.append(slug)
+
         feeds.append(FeedResponse(
             topic_slug=slug,
             clips=clips,
-            processing=len(clips) == 0,
+            processing=is_generating or len(clips) == 0,
         ))
+
+    # Self-heal: if a topic has no clips and nothing is generating it (e.g. the
+    # original background task was lost on a server restart / OOM), kick off its
+    # pipeline now. Marking the slug immediately prevents duplicate triggers on
+    # the next poll. This is why entering a topic now reliably generates clips
+    # without the user having to leave and come back.
+    if missing_slugs:
+        slug_names: dict[str, str] = {}
+        try:
+            rows = db.table("topics").select("slug,name").in_("slug", missing_slugs).execute()
+            slug_names = {r["slug"]: r["name"] for r in rows.data}
+        except Exception as e:
+            logger.warning(f"[feed] self-heal name lookup failed: {e}")
+        for slug in missing_slugs:
+            generating_slugs.add(slug)
+            name = slug_names.get(slug) or slug.replace("-", " ").title()
+            background_tasks.add_task(_process_single_topic, slug, name)
+            logger.info(f"[feed] self-heal: triggered generation for empty topic='{slug}'")
 
     # Bubble "want more" topics (high interest) to the front
     feeds.sort(key=lambda f: interest_vector.get(f.topic_slug, 0.0), reverse=True)
