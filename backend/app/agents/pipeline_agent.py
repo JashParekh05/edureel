@@ -96,15 +96,25 @@ def _node_search(state: PipelineState) -> dict:
 
 
 def _node_transcribe(state: PipelineState) -> dict:
+    """Candidate bounding: we search 6 videos for recall, but only transcribe +
+    keep the top few that actually have transcripts. Segmentation downstream is
+    the bottleneck (one LLM call per video), so capping here cuts time-to-clips
+    and OpenAI cost ~6-12x. The first section keeps just one video so the very
+    first clip lands fastest (progressive backfill handles the rest)."""
     from app.services.youtube import _fetch_transcript
-    videos = state["videos"]
-    errors = []
-    for v in videos:
+
+    limit = 1 if state.get("section_index") == 0 else 2
+    kept, errors = [], []
+    for v in state["videos"]:
+        if len(kept) >= limit:
+            break
         transcript = _fetch_transcript(v["video_id"])
-        v["transcript"] = transcript
-        if not transcript:
+        if transcript:
+            v["transcript"] = transcript
+            kept.append(v)
+        else:
             errors.append(f"No transcript: {v['video_id']}")
-    return {"videos": videos, "errors": errors}
+    return {"videos": kept, "errors": errors}
 
 
 def _node_segment(state: PipelineState) -> dict:
