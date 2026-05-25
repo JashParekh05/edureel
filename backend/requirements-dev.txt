@@ -1,0 +1,5 @@
+# Dev/test dependencies (not installed on Render). Install locally:
+#   pip install -r requirements-dev.txt
+# Run tests from the backend/ dir:
+#   python -m pytest
+pytest>=8.0

@@ -1,18 +1,12 @@
-# Graph Report - learnreel  (2026-05-25)
+# Graph Report - .  (2026-05-21)
 
 ## Corpus Check
-- 55 files · ~22,735 words
-- Verdict: corpus is large enough that graph structure adds value.
+- Corpus is ~20,867 words - fits in a single context window. You may not need a graph.
 
 ## Summary
-- 734 nodes · 843 edges · 100 communities (84 shown, 16 thin omitted)
-- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 44 edges (avg confidence: 0.8)
-- Token cost: 0 input · 0 output
-
-## Graph Freshness
-- Built from commit: `3fad0ba0`
-- Run `git rev-parse HEAD` and compare to check if the graph is stale.
-- Run `graphify update .` after code changes (no API cost).
+- 729 nodes · 846 edges · 101 communities (85 shown, 16 thin omitted)
+- Extraction: 95% EXTRACTED · 5% INFERRED · 0% AMBIGUOUS · INFERRED: 46 edges (avg confidence: 0.8)
+- Token cost: 153,156 input · 27,026 output
 
 ## Community Hubs (Navigation)
 - [[_COMMUNITY_Frontend Pages & Reel Player|Frontend Pages & Reel Player]]
@@ -33,6 +27,7 @@
 - [[_COMMUNITY_Community 15|Community 15]]
 - [[_COMMUNITY_Community 16|Community 16]]
 - [[_COMMUNITY_Community 17|Community 17]]
+- [[_COMMUNITY_Community 18|Community 18]]
 - [[_COMMUNITY_Community 19|Community 19]]
 - [[_COMMUNITY_Community 20|Community 20]]
 - [[_COMMUNITY_Community 21|Community 21]]
@@ -112,12 +107,12 @@
 ## God Nodes (most connected - your core abstractions)
 1. `topics` - 54 edges
 2. `compilerOptions` - 16 edges
-3. `Supabase get_client (singleton)` - 12 edges
+3. `Supabase get_client (singleton)` - 13 edges
 4. `useAuth()` - 11 edges
 5. `process_video()` - 9 edges
-6. `FeedContent` - 8 edges
-7. `get_path_feed endpoint` - 8 edges
-8. `process_video (service)` - 8 edges
+6. `process_video (service)` - 9 edges
+7. `FeedContent` - 8 edges
+8. `get_path_feed endpoint` - 8 edges
 9. `get_path_feed()` - 7 edges
 10. `embed_texts()` - 7 edges
 
@@ -130,8 +125,8 @@
   backend/app/api/feed.py → frontend/package.json
 - `create_learning_path()` --calls--> `run_curriculum()`  [INFERRED]
   backend/app/api/topics.py → backend/app/agents/curriculum_agent.py
-- `bulk_seed.main` --shares_data_with--> `bulk_urls.seen.txt checkpoint`  [EXTRACTED]
-  backend/scripts/bulk_seed.py → backend/seed/bulk_urls.seen.txt
+- `process_video (service)` --semantically_similar_to--> `run_pipeline`  [INFERRED] [semantically similar]
+  backend/app/services/pipeline.py → backend/app/agents/pipeline_agent.py
 
 ## Hyperedges (group relationships)
 - **Auth-to-onboarding routing flow** — login_loginpage, callback_authcallback, page_home, concept_onboarding_gate, api_getuserprofile [INFERRED 0.85]
@@ -143,27 +138,27 @@
 - **Clip seeding scripts share pipeline + Supabase** — bulk_seed_main, seed_clips_main, add_clip_main, pipeline_process_video, supabase_get_client [INFERRED 0.85]
 - **Atomic personalization vector RPCs over pgvector** — migration_pgvector_merge_user_interest, migration_pgvector_merge_user_taste, migration_pgvector_merge_session_interest, migration_pgvector_clips_embedding [INFERRED 0.85]
 
-## Communities (100 total, 16 thin omitted)
+## Communities (101 total, 16 thin omitted)
 
 ### Community 0 - "Frontend Pages & Reel Player"
 Cohesion: 0.08
 Nodes (37): metadata, Home(), SUGGESTIONS, isYouTubeEmbed(), Props, ReelPlayer(), sanitizeYTUrl(), DiscoverPage() (+29 more)
 
 ### Community 1 - "Feed Scoring & Retrieval"
-Cohesion: 0.07
-Nodes (43): _node_segment(), _cached_slug_embeddings(), _compute_scores(), _fetch_clips_for_slug(), _fetch_discover_clips(), _get_clip_population_stats(), get_discover_feed(), get_feed() (+35 more)
+Cohesion: 0.10
+Nodes (31): _cached_slug_embeddings(), _compute_scores(), _fetch_clips_for_slug(), _fetch_discover_clips(), _get_clip_population_stats(), get_discover_feed(), get_feed(), get_path_feed() (+23 more)
 
 ### Community 2 - "Frontend API Client & Models"
 Cohesion: 0.09
 Nodes (32): authHeaders, Clip (data model), createLearningPath, FeedResponse (data model), getDiscoverFeed, getPathFeed, getRecommendations, getTopicFeed (+24 more)
 
 ### Community 3 - "Recommendation Agent Graph"
-Cohesion: 0.14
-Nodes (14): build_recommendation_graph(), _generate_related_topics(), _node_find_candidates(), _node_identify_mastered(), _node_score_and_rank(), _node_trigger_fetch(), LangGraph agent: analyze watch history → score topics → surface next recommendat, Forward-graph traversal: find topics whose prerequisites include mastered topics (+6 more)
+Cohesion: 0.09
+Nodes (27): CurriculumState, PipelineState, build_recommendation_graph(), _generate_related_topics(), _node_find_candidates(), _node_identify_mastered(), _node_score_and_rank(), _node_trigger_fetch() (+19 more)
 
 ### Community 4 - "Seeding Scripts & Embeddings"
-Cohesion: 0.09
-Nodes (22): _node_transcribe(), Candidate bounding: we search 6 videos for recall, but only transcribe +     kee, main(), Add clips for one topic from one (or more) video URLs. Runs the same pipeline as, slug_to_name(), main(), Bulk-seed clips from a CSV file of (topic-slug, url) pairs.  Usage:     cd backe, slug_to_name() (+14 more)
+Cohesion: 0.08
+Nodes (25): _node_segment(), main(), Add clips for one topic from one (or more) video URLs. Runs the same pipeline as, slug_to_name(), main(), Backfill embeddings for clips that don't have one yet.  Usage:     cd backend, main(), Bulk-seed clips from a CSV file of (topic-slug, url) pairs.  Usage:     cd backe (+17 more)
 
 ### Community 5 - "Learning Path Extension"
 Cohesion: 0.08
@@ -178,44 +173,48 @@ Cohesion: 0.14
 Nodes (17): build_curriculum_graph(), _build_familiarity_prompt(), _groq(), _node_build_curriculum(), _node_load_curated(), _node_understand_intent(), _node_validate_path(), LangGraph agent: multi-step learning path generation with intent understanding + (+9 more)
 
 ### Community 8 - "Video Pipeline Agent"
-Cohesion: 0.12
-Nodes (19): CurriculumState, build_pipeline_graph(), PipelineState, LangGraph agent: YouTube search → transcript → Groq segmentation → Supabase stor, Run the full pipeline for a topic (or one section of a topic). Returns clips sto, run_pipeline(), RecommendationState, Background: upsert topic rows and run pipeline for any with no clips yet. (+11 more)
+Cohesion: 0.13
+Nodes (14): build_pipeline_graph(), _node_transcribe(), LangGraph agent: YouTube search → transcript → Groq segmentation → Supabase stor, Run the full pipeline for a topic (or one section of a topic). Returns clips sto, run_pipeline(), Background: upsert topic rows and run pipeline for any with no clips yet., _seed_topics_bg(), _cache_get() (+6 more)
 
 ### Community 9 - "Frontend Build Dependencies"
 Cohesion: 0.11
 Nodes (17): devDependencies, autoprefixer, postcss, tailwindcss, @types/node, @types/react, @types/react-dom, @types/uuid (+9 more)
 
 ### Community 10 - "Clip Seeding Pipeline"
-Cohesion: 0.10
-Nodes (28): add_clip.main, add_clip.slug_to_name, backfill_embeddings.main, bulk_seed.main, bulk_seed.slug_to_name, bulk_urls.seen.txt checkpoint, clear_topics.main, embed_text (+20 more)
+Cohesion: 0.23
+Nodes (14): add_clip.main, add_clip.slug_to_name, bulk_seed.main, bulk_seed.slug_to_name, bulk_urls.seen.txt checkpoint, clear_topics.main, manual_seed.main, _extract_video_id (+6 more)
 
 ### Community 11 - "Path Feed & Recommendations"
-Cohesion: 0.40
-Nodes (6): TopicRequest schema, plan_and_store_sections, _process_single_topic, _process_topics_parallel, create_learning_path endpoint, generating_slugs (processing set)
+Cohesion: 0.19
+Nodes (13): _extend_path (auto-extend), _interleave_topics (diversity), _transcript_boost, get_path_feed endpoint, get_recommendations endpoint, RecommendationState, run_recommendations, TopicRequest schema (+5 more)
 
 ### Community 12 - "Curated Curriculum Generation"
-Cohesion: 0.18
-Nodes (14): Curated topics seed library, _node_build_curriculum, _node_load_curated, _node_understand_intent, _node_validate_path, build_curriculum_graph, CurriculumState, run_curriculum (+6 more)
+Cohesion: 0.24
+Nodes (11): Curated topics seed library, _node_load_curated, _node_understand_intent, _node_validate_path, build_curriculum_graph, CurriculumState, run_curriculum, _curated_topics loader (+3 more)
 
 ### Community 13 - "Multi-signal Feed Ranking"
-Cohesion: 0.25
-Nodes (8): cosine_similarity, _compute_scores (multi-signal ranking), _fetch_discover_clips, _interest_seed_slugs (cold start), _match_interest_slugs, _seed_topics_bg, get_discover_feed endpoint, get_feed endpoint
+Cohesion: 0.18
+Nodes (11): cosine_similarity, _compute_scores (multi-signal ranking), _fetch_clips_for_slug, _fetch_discover_clips, _get_clip_population_stats, _interest_seed_slugs (cold start), _match_interest_slugs, _seed_topics_bg (+3 more)
 
 ### Community 14 - "Recommendation Scoring Nodes"
 Cohesion: 0.22
-Nodes (9): _extend_path (auto-extend), get_recommendations endpoint, _node_identify_mastered, _node_score_and_rank, _node_trigger_fetch, build_recommendation_graph, RecommendationState, run_recommendations (+1 more)
+Nodes (9): _node_build_curriculum, _get_session_telemetry, _generate_related_topics, _node_find_candidates, _node_identify_mastered, _node_load_telemetry, _node_score_and_rank, build_recommendation_graph (+1 more)
 
 ### Community 15 - "Community 15"
 Cohesion: 0.25
 Nodes (7): enabledPlugins, superpowers@claude-plugins-official, ui-ux-pro-max@ui-ux-pro-max-skill, env, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, MAX_THINKING_TOKENS, model
 
 ### Community 16 - "Community 16"
-Cohesion: 0.18
-Nodes (10): Caching layers (so we encode once, then move on), code:block1 (USER QUERY ──► "teach me binary search"), code:block2 (FEED REQUEST ──► get_path_feed(session)), Curio — Architecture, How this maps to a large-scale recommender, In-flight tracking, Ingestion pipeline — "get the video → encode it → move on", Serving pipeline — online, on every feed request (+2 more)
+Cohesion: 0.29
+Nodes (8): clips.embedding vector(384), clips_embedding_hnsw index, match_clips (SQL RPC), Curio (project), Groq (llama-3.3-70b-versatile), On-demand reel generation pipeline, Supabase (Postgres), OpenAI Whisper transcription
 
 ### Community 17 - "Community 17"
-Cohesion: 0.25
-Nodes (8): _fetch_clips_for_slug, _get_clip_population_stats, _get_session_telemetry, _interleave_topics (diversity), _transcript_boost, get_path_feed endpoint, _node_load_telemetry, Clip schema
+Cohesion: 0.29
+Nodes (7): backfill_embeddings.main, embed_text, embed_texts, get_model (sentence-transformers), Startup warmup (preload embedding model), _identify_segments (LLM segmentation), _node_segment
+
+### Community 18 - "Community 18"
+Cohesion: 0.29
+Nodes (7): _node_search (YouTube search), _node_store, _node_transcribe, build_pipeline_graph, PipelineState, run_pipeline, _node_trigger_fetch
 
 ### Community 19 - "Community 19"
 Cohesion: 0.33
@@ -454,7 +453,7 @@ Cohesion: 0.67
 Nodes (3): FastAPI app (main), _real_ip (key func), SlowAPI limiter
 
 ## Knowledge Gaps
-- **360 isolated node(s):** `code:block1 (USER QUERY ──► "teach me binary search")`, `Caching layers (so we encode once, then move on)`, `In-flight tracking`, `code:block2 (FEED REQUEST ──► get_path_feed(session))`, `Telemetry attribution` (+355 more)
+- **353 isolated node(s):** `config`, `config`, `name`, `version`, `private` (+348 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **16 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -462,16 +461,16 @@ Nodes (3): FastAPI app (main), _real_ip (key func), SlowAPI limiter
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `topics` connect `Community 79` to `Community 19`, `Community 20`, `Community 21`, `Community 22`, `Community 23`, `Community 24`, `Community 25`, `Community 26`, `Community 27`, `Community 28`, `Community 29`, `Community 30`, `Community 31`, `Community 32`, `Community 33`, `Community 34`, `Community 35`, `Community 36`, `Community 37`, `Community 38`, `Community 39`, `Community 40`, `Community 41`, `Community 42`, `Community 43`, `Community 44`, `Community 45`, `Community 46`, `Community 47`, `Community 48`, `Community 49`, `Community 50`, `Community 51`, `Community 52`, `Community 53`, `Community 55`, `Community 56`, `Community 57`, `Community 58`, `Community 59`, `Community 60`, `Community 61`, `Community 62`, `Community 63`, `Community 64`, `Community 65`, `Community 66`, `Community 67`, `Community 68`, `Community 69`, `Community 70`, `Community 71`, `Community 72`?**
-  _High betweenness centrality (0.161) - this node is a cross-community bridge._
+  _High betweenness centrality (0.164) - this node is a cross-community bridge._
 - **Why does `_extend_path()` connect `Learning Path Extension` to `Feed Scoring & Retrieval`?**
   _High betweenness centrality (0.024) - this node is a cross-community bridge._
 - **Why does `dependencies` connect `Learning Path Extension` to `Frontend Build Dependencies`?**
   _High betweenness centrality (0.019) - this node is a cross-community bridge._
-- **What connects `LangGraph agent: YouTube search → transcript → Groq segmentation → Supabase stor`, `Candidate bounding: we search 6 videos for recall, but only transcribe +     kee`, `Run the full pipeline for a topic (or one section of a topic). Returns clips sto` to the rest of the system?**
-  _412 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **What connects `config`, `config`, `name` to the rest of the system?**
+  _404 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Frontend Pages & Reel Player` be split into smaller, more focused modules?**
   _Cohesion score 0.07607843137254902 - nodes in this community are weakly interconnected._
 - **Should `Feed Scoring & Retrieval` be split into smaller, more focused modules?**
-  _Cohesion score 0.06845513413506013 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.10416666666666667 - nodes in this community are weakly interconnected._
 - **Should `Frontend API Client & Models` be split into smaller, more focused modules?**
   _Cohesion score 0.08870967741935484 - nodes in this community are weakly interconnected._

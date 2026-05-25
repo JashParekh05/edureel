@@ -36,6 +36,7 @@ function FeedContent() {
   const sessionTokenRef = useRef(session?.access_token ?? "");
   const clipStartRef = useRef<number>(Date.now());
   const clipVisitsRef = useRef<Record<string, number>>({});
+  const alreadyKnowRef = useRef<Record<string, number>>({});
   const seenClipIdsRef = useRef<Set<string>>(new Set());
   const fetchingMoreRef = useRef(false);
   const loadFeed = useCallback(async () => {
@@ -395,8 +396,17 @@ function FeedContent() {
                 onFeedback={sessionId ? (type) => {
                   recordClipEvent(clip.id, Date.now() - clipStartRef.current, false, sessionId, 0, type, session?.access_token ?? "");
                   if (type === "already_know") {
-                    setClips((prev) => prev.filter((c) => c.id === clip.id || topicLabels[c.id] !== topicLabels[clip.id]));
-                    goTo(i + 1);
+                    // Skip the current clip and stay within the topic. After a few
+                    // ✓'s in the same topic, skip past the whole topic. Navigate by
+                    // index only — mutating the clips array corrupts the snap scroll.
+                    const topic = topicLabels[clip.id];
+                    alreadyKnowRef.current[topic] = (alreadyKnowRef.current[topic] ?? 0) + 1;
+                    if (alreadyKnowRef.current[topic] >= 3) {
+                      const nextTopicIdx = clips.findIndex((c, idx) => idx > i && topicLabels[c.id] !== topic);
+                      goTo(nextTopicIdx === -1 ? clips.length - 1 : nextTopicIdx);
+                    } else {
+                      goTo(i + 1);
+                    }
                   }
                 } : undefined}
               />
