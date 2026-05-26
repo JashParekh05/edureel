@@ -286,20 +286,31 @@ async def get_discover_feed(user_id: str, background_tasks: BackgroundTasks, lim
     except Exception as e:
         logger.error(f"[feed] Failed to fetch topics for discover user={user_id}: {e}")
         return []
-    # Cold start: no taste signal yet — seed interest-aligned topics and prefer them for discovery
+    # Restrict discovery to topics that actually have clips, so the feed is both
+    # relevant AND populated. Grade-map seed slugs are mostly empty placeholders,
+    # which is why discovery used to fall back to generic top-hook clips.
+    try:
+        clip_rows = db.table("clips").select("topic_slug").limit(2000).execute().data
+        populated = {r["topic_slug"] for r in clip_rows}
+        candidate_slugs = [s for s in all_slugs if s in populated] or all_slugs
+    except Exception as e:
+        logger.warning(f"[feed] Failed to fetch populated slugs for discover user={user_id}: {e}")
+        candidate_slugs = all_slugs
+
+    # Cold start: no behavioral taste yet — derive a taste vector from the user's
+    # onboarding interests so discovery is personalized from interests alone
+    # (semantic ranking + semantic scoring), no watch history required.
     if taste_vector is None and interests:
-        difficulty = _GRADE_DIFFICULTY.get(grade_level, "intermediate")
+        from app.services.embeddings import embed_text
+        taste_vector = embed_text(" ".join(interests))
+        # Keep growing the library in the background from grade-aligned seeds.
         seed_slugs = _interest_seed_slugs(interests, grade_level)
         if seed_slugs:
-            background_tasks.add_task(_seed_topics_bg, seed_slugs, difficulty)
-            existing_seed = [s for s in seed_slugs if s in all_slugs]
-            relevant_slugs = existing_seed[:10] if existing_seed else _match_interest_slugs(interests, all_slugs)
-        else:
-            relevant_slugs = _match_interest_slugs(interests, all_slugs)
-    else:
-        relevant_slugs = _match_interest_slugs(interests, all_slugs, taste_vector=taste_vector)
+            background_tasks.add_task(_seed_topics_bg, seed_slugs, _GRADE_DIFFICULTY.get(grade_level, "intermediate"))
 
-    clips = _fetch_discover_clips(db, relevant_slugs, all_slugs, seen_ids, limit, interest_vector=user_interest_vector, taste_vector=taste_vector)
+    relevant_slugs = _match_interest_slugs(interests, candidate_slugs, taste_vector=taste_vector)
+
+    clips = _fetch_discover_clips(db, relevant_slugs, candidate_slugs, seen_ids, limit, interest_vector=user_interest_vector, taste_vector=taste_vector)
 
     # Global fallback: seed topics are still generating — return best available clips from any topic.
     # Over-fetch so we still surface UNSEEN clips for returning users who've already watched the
