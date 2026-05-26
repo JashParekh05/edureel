@@ -51,8 +51,6 @@ cp .env.example .env          # fill in your keys
 uvicorn app.main:app --reload --port 8000
 ```
 
-API docs at http://localhost:8000/docs
-
 **Database** — run these against your Supabase project (SQL editor):
 
 ```bash
@@ -85,8 +83,6 @@ npm install
 #   NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 npm run dev
 ```
-
-Frontend at http://localhost:3000
 
 ### Seeding content (optional)
 
