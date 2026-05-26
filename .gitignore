@@ -24,3 +24,6 @@ tmp/
 # YouTube auth & whisper cache
 backend/cookies.txt
 backend/.whisper_cache/
+
+# graphify knowledge-graph tool output (regenerated locally on demand)
+graphify-out/
