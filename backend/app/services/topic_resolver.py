@@ -23,6 +23,36 @@ logger = logging.getLogger(__name__)
 # regenerating.
 SIMILARITY_THRESHOLD = 0.84
 
+# Filler words that don't change a topic's core concept, so they shouldn't count
+# toward specificity (e.g. "Binary Search Fundamentals" ≈ "binary-search").
+_FILLER = {
+    "introduction", "intro", "fundamentals", "fundamental", "basics", "basic",
+    "explained", "overview", "guide", "understanding", "the", "a", "an", "of",
+    "to", "and", "for", "with", "in", "on", "what", "is", "are", "how", "101",
+}
+
+
+def _core_tokens(*texts: str) -> set[str]:
+    import re
+    toks: set[str] = set()
+    for t in texts:
+        toks |= {w for w in re.findall(r"[a-z0-9]+", t.lower()) if len(w) > 2}
+    return toks - _FILLER
+
+
+def _is_specificity_drift(input_name: str, input_slug: str, matched_slug: str) -> bool:
+    """True when merging would lose specificity — the matched concept is a strict
+    generalization of the input (specific→generic parent) or the input is a strict
+    generalization of the match (broad parent→specific child). Either is a routing
+    error: only same-concept merges (equal or overlapping-but-not-subset) are safe.
+    """
+    in_core = _core_tokens(input_name, input_slug)
+    match_core = _core_tokens(matched_slug)
+    if not in_core or not match_core:
+        return False  # nothing lexical to judge — defer to the cosine threshold
+    # Proper subset in either direction = one is strictly broader than the other.
+    return match_core < in_core or in_core < match_core
+
 # (slug, name, embedding) for every known topic. Built once per process.
 _index: list[tuple[str, str, list[float]]] | None = None
 
@@ -77,6 +107,12 @@ def resolve_topic(slug: str, name: str) -> str | None:
             best_slug, best_score = s, score
 
     if not best_slug or best_score < SIMILARITY_THRESHOLD:
+        return None
+
+    # Routing guard: don't let a specific topic collapse into a broader generic
+    # one (or vice-versa) on cosine alone — that serves the wrong content.
+    if _is_specificity_drift(name, slug, best_slug):
+        logger.info(f"[topic_resolver] block specificity drift '{slug}' -> '{best_slug}' (sim={best_score:.3f})")
         return None
 
     # Only reuse if the matched topic actually has clips — otherwise reusing it
