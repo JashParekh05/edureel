@@ -231,8 +231,13 @@ function FeedContent() {
   sessionTokenRef.current = session?.access_token ?? "";
   isGuestRef.current = isGuest;
   topicLabelsRef.current = topicLabels;
+  // The end card sits one slot past the last clip; goTo may land on it so the
+  // last clip's autoplay/arrow advance reaches "You finished this topic".
+  const trailingCardRef = useRef(0);
+  trailingCardRef.current = clips.length > 0 && !processing ? 1 : 0;
   const goTo = useCallback((idx: number) => {
-    const clamped = Math.max(0, Math.min(clipsRef.current.length - 1, idx));
+    const max = clipsRef.current.length - 1 + trailingCardRef.current;
+    const clamped = Math.max(0, Math.min(max, idx));
     const el = containerRef.current?.querySelectorAll("[data-index]")[clamped] as HTMLElement;
     el?.scrollIntoView({ behavior: "instant" });
   }, []);
@@ -584,7 +589,7 @@ function FeedContent() {
 
         <span className="text-white text-xs tabular-nums flex items-center gap-2 pointer-events-auto">
           {clips.length > 0 ? (
-            <span className="rounded-pill bg-black/40 backdrop-blur-sm px-3 py-1.5 font-semibold">{activeIndex + 1} / {clips.length}</span>
+            <span className="rounded-pill bg-black/40 backdrop-blur-sm px-3 py-1.5 font-semibold">{Math.min(activeIndex + 1, clips.length)} / {clips.length}</span>
           ) : ""}
           {activeTopicSlug && (
             <button
@@ -632,7 +637,7 @@ function FeedContent() {
         <div className="absolute top-0 inset-x-0 z-30 h-1 bg-white/20">
           <div
             className="h-full bg-primary transition-all duration-300"
-            style={{ width: `${((activeIndex + 1) / clips.length) * 100}%` }}
+            style={{ width: `${Math.min(100, ((activeIndex + 1) / clips.length) * 100)}%` }}
           />
         </div>
       )}
@@ -726,9 +731,10 @@ function FeedContent() {
           </Fragment>
         ))}
 
-        {/* End card */}
+        {/* End card — data-index keeps it goTo-reachable; it's the LAST indexed
+            element so clip indexing stays positional (checkpoints have none). */}
         {clips.length > 0 && !processing && (
-          <div className="snap-start snap-always" style={{ height: "100dvh" }}>
+          <div data-index={clips.length} className="snap-start snap-always" style={{ height: "100dvh" }}>
             <div className="h-full flex flex-col items-center justify-center gap-5 bg-canvas text-on-surface px-6">
               <p className="font-display text-3xl font-extrabold text-center">You finished this topic.</p>
               <p className="text-on-surface-muted text-sm text-center">

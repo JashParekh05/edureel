@@ -80,6 +80,7 @@ scripts/migration_sections.sql        # topic_sections table
 scripts/migration_grade_level.sql     # user_profiles.grade_level
 scripts/migration_cold_start.sql      # project_quota_usage + RPC, topic_backlog, clips.content_level
 scripts/migration_telemetry.sql       # impressions table (engagement telemetry)
+scripts/migration_clip_events_user.sql # clip_events.user_id (discover seen-history)
 ```
 
 > **Required, not optional.** `migration_cold_start.sql` creates the

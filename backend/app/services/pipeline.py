@@ -343,7 +343,7 @@ def process_video(video_url: str, topic_slug: str) -> list[dict]:
             "topic_slug": topic_slug,
             "title": seg["title"],
             "description": seg["description"],
-            "video_url": f"https://www.youtube.com/embed/{video_id}?start={int(seg['start'])}&autoplay=1&rel=0&modestbranding=1",
+            "video_url": f"https://www.youtube.com/embed/{video_id}?start={int(seg['start'])}&end={int(seg['end'])}&autoplay=1&rel=0&modestbranding=1",
             "thumbnail_url": f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
             "duration_seconds": int(seg["end"] - seg["start"]),
             "transcript": seg["transcript"],

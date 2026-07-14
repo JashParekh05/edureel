@@ -94,7 +94,9 @@ export default function DiscoverPage() {
   }, [user?.id]);
 
   const goTo = useCallback((idx: number) => {
-    const clamped = Math.max(0, Math.min(clipsRef.current.length - 1, idx));
+    // length (not length-1): the end card occupies one slot past the last
+    // clip, so the last clip's autoplay/arrow advance can reach it.
+    const clamped = Math.max(0, Math.min(clipsRef.current.length, idx));
     const el = containerRef.current?.querySelectorAll("[data-index]")[clamped] as HTMLElement;
     el?.scrollIntoView({ behavior: "instant" });
   }, []);
@@ -301,13 +303,13 @@ export default function DiscoverPage() {
       <div className="absolute top-0 inset-x-0 z-30 h-1 bg-white/20">
         <div
           className="h-full bg-primary transition-all duration-300"
-          style={{ width: `${((activeIndex + 1) / clips.length) * 100}%` }}
+          style={{ width: `${Math.min(100, ((activeIndex + 1) / clips.length) * 100)}%` }}
         />
       </div>
 
       {/* HUD — glassy chrome over the video, pushed below the embed's top bar */}
       <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between px-4 pt-12 pb-2 pointer-events-none">
-        <span className="rounded-pill bg-black/40 backdrop-blur-sm text-white text-xs font-semibold px-3 py-1.5 tabular-nums pointer-events-auto">{activeIndex + 1} / {clips.length}</span>
+        <span className="rounded-pill bg-black/40 backdrop-blur-sm text-white text-xs font-semibold px-3 py-1.5 tabular-nums pointer-events-auto">{Math.min(activeIndex + 1, clips.length)} / {clips.length}</span>
         <span className="flex items-center gap-2 pointer-events-auto">
           <button
             onClick={() => router.push("/")}
@@ -373,7 +375,7 @@ export default function DiscoverPage() {
         ))}
 
         {/* End card */}
-        <div className="snap-start snap-always" style={{ height: "100dvh" }}>
+        <div data-index={clips.length} className="snap-start snap-always" style={{ height: "100dvh" }}>
           <div className="h-full flex flex-col items-center justify-center gap-5 bg-canvas text-on-surface px-6">
             <p className="font-display text-3xl font-extrabold text-center">You&apos;re all caught up</p>
             <p className="text-on-surface-muted text-sm text-center">Want to go deeper on something?</p>
