@@ -35,8 +35,12 @@ def _get_session_telemetry(db, session_id: str) -> tuple[set[str], dict[str, flo
 
     slug_lookup: dict[str, str] = {}
     if clip_ids:
-        clips_res = db.table("clips").select("id, topic_slug").in_("id", clip_ids).execute()
-        slug_lookup = {c["id"]: c["topic_slug"] for c in clips_res.data}
+        try:
+            clips_res = db.table("clips").select("id, topic_slug").in_("id", clip_ids).execute()
+            slug_lookup = {c["id"]: c["topic_slug"] for c in clips_res.data}
+        except Exception as e:
+            # Degrade to seen_ids-only rather than 500ing the whole path feed.
+            logger.warning(f"[feed] Failed to fetch clip slugs for session={session_id}: {e}")
 
     for ev in events.data:
         slug = slug_lookup.get(ev["clip_id"])

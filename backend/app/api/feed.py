@@ -662,6 +662,15 @@ async def get_discover_feed(user_id: str, background_tasks: BackgroundTasks, lim
             seen_ids = {e["clip_id"] for e in events.data}
     except Exception as e:
         logger.warning(f"[feed] Failed to build seen_ids for user={user_id}: {e}")
+    # Discover/topic-feed events carry no session, only user_id — without this
+    # branch a returning user gets re-served everything they watched on
+    # Discover. Separate try: degrades to session-only until the user_id
+    # column migration has run.
+    try:
+        user_events = db.table("clip_events").select("clip_id").eq("user_id", user_id).execute()
+        seen_ids |= {e["clip_id"] for e in user_events.data}
+    except Exception as e:
+        logger.warning(f"[feed] Failed to build user-level seen_ids for user={user_id}: {e}")
 
     # Merge client-known in-session clip ids so successive load-more calls never
     # re-return clips already on screen (their telemetry may not be flushed yet).
@@ -809,10 +818,12 @@ async def record_clip_event(request: Request, clip_id: str, event: ClipEvent, ca
         "replay_count": event.replay_count,
     }
     try:
-        # Persist feedback (fire/check) so it survives as history, not just as a
-        # live vector nudge. Falls back to core columns if the `feedback` column
-        # hasn't been migrated yet, so telemetry is never lost.
-        db.table("clip_events").insert({**base_row, "feedback": event.feedback}).execute()
+        # Persist feedback (fire/check) and the watching user so discover/topic-
+        # feed events (which have no session) stay attributable — without user_id
+        # the discover feed can't see them as watched and re-serves those clips.
+        # Falls back to core columns if the newer columns haven't been migrated
+        # yet, so telemetry is never lost.
+        db.table("clip_events").insert({**base_row, "feedback": event.feedback, "user_id": user_id}).execute()
     except Exception:
         try:
             db.table("clip_events").insert(base_row).execute()
