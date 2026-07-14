@@ -240,7 +240,7 @@ def _node_segment(state: PipelineState) -> dict:
                         **base,
                         "title": seg["title"],
                         "description": seg.get("description", base["description"]),
-                        "video_url": f"https://www.youtube.com/embed/{vid_id}?start={int(seg['start'])}&autoplay=1&rel=0&modestbranding=1",
+                        "video_url": f"https://www.youtube.com/embed/{vid_id}?start={int(seg['start'])}&end={int(seg['end'])}&autoplay=1&rel=0&modestbranding=1",
                         "duration_seconds": int(seg["end"] - seg["start"]),
                         "transcript": seg.get("transcript"),
                         "hook_score": seg.get("hook_score", 0.5),

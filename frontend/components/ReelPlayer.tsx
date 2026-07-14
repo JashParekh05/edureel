@@ -19,9 +19,15 @@ function isYouTubeEmbed(url: string) {
   return url.includes("youtube.com/embed") || url.includes("youtube-nocookie.com/embed");
 }
 
-function sanitizeYTUrl(url: string, active: boolean): string {
+function sanitizeYTUrl(url: string, active: boolean, durationSeconds?: number | null): string {
   try {
     const u = new URL(url);
+    // Clips stored before the backend wrote `end=` play past their cut into
+    // the rest of the source video — derive the end from the clip duration.
+    if (!u.searchParams.has("end") && durationSeconds) {
+      const start = parseInt(u.searchParams.get("start") ?? "0", 10) || 0;
+      u.searchParams.set("end", String(start + durationSeconds));
+    }
     u.searchParams.set("enablejsapi", "1");
     u.searchParams.set("autoplay", active ? "1" : "0");
     u.searchParams.set("mute", active ? "0" : "1");
@@ -47,7 +53,7 @@ export default function ReelPlayer({ clip, mode, onEnded, onFeedback, onLearnThi
   // reloads the embed (key stays clip.id); play/mute transitions go through the
   // postMessage effect below instead.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const ytSrc = useMemo(() => (isYT ? sanitizeYTUrl(clip.video_url, active) : ""), [clip.id, isYT]);
+  const ytSrc = useMemo(() => (isYT ? sanitizeYTUrl(clip.video_url, active, clip.duration_seconds) : ""), [clip.id, isYT]);
 
   useEffect(() => {
     setVideoError(false);
@@ -81,6 +87,54 @@ export default function ReelPlayer({ clip, mode, onEnded, onFeedback, onLearnThi
       win?.postMessage(cmd("mute"), "*");
     }
   }, [active, isYT]);
+
+  // YouTube embeds fire no DOM `ended` event, so without this the feed never
+  // auto-advances: subscribe to the iframe API's state messages and call
+  // onEnded when the player reaches ENDED (state 0) at the clip's end= mark.
+  // Warm (preloaded) players are ignored — only the active clip may advance.
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const endedFiredRef = useRef(false);
+  useEffect(() => {
+    endedFiredRef.current = false;
+  }, [clip.id]);
+  useEffect(() => {
+    if (!isYT) return;
+    const iframe = iframeRef.current;
+    const subscribe = () =>
+      iframe?.contentWindow?.postMessage(
+        JSON.stringify({ event: "listening", id: clip.id, channel: "widget" }),
+        "*"
+      );
+    subscribe(); // iframe may already be loaded
+    iframe?.addEventListener("load", subscribe);
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== iframe?.contentWindow) return;
+      let data: { event?: string; info?: number | { playerState?: number } };
+      try {
+        data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+      } catch {
+        return;
+      }
+      const state =
+        data?.event === "onStateChange" && typeof data.info === "number"
+          ? data.info
+          : typeof data?.info === "object"
+            ? data.info?.playerState
+            : undefined;
+      if (state === 0 && activeRef.current && !endedFiredRef.current) {
+        endedFiredRef.current = true;
+        onEndedRef.current();
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      iframe?.removeEventListener("load", subscribe);
+    };
+  }, [isYT, clip.id]);
 
   return (
     <div
